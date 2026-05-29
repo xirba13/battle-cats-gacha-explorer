@@ -73,6 +73,7 @@ body {
   font-size: 14px;
 }
 .tab.active { background: var(--teal); color: #fff; font-weight: 600; }
+.tab.active:hover { background: var(--teal-dark); color: #fff; }
 
 .error-bar {
   background: #ffe1e1;
