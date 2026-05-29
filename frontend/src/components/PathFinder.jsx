@@ -141,8 +141,7 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
       await reloadState();
       await loadHistory();
       let msg = res.prompt +
-        ` (+${res.units_added_count} new unit${res.units_added_count === 1 ? "" : "s"} owned` +
-        (res.units_pulled_count ? `, ${res.units_pulled_count} pulled` : "") + ")";
+        ` (+${res.units_added_count} new unit${res.units_added_count === 1 ? "" : "s"} owned)`;
       if (res.unmatched_units?.length)
         msg += ` · ${res.unmatched_units.length} unit(s) not in master, see log`;
       setFollowMsg(msg);
