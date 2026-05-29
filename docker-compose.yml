@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist sqlite DB, godfat cache, and the unmatched-names log.
+      - ./backend/var:/app/var
+    environment:
+      BCPE_DB: /app/var/app.sqlite
+      BCPE_CACHE: /app/var/godfat_cache
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # The Vite dev-server proxies /api to the backend service.
+      BCPE_BACKEND: http://backend:8000
+    depends_on:
+      - backend

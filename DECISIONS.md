@@ -124,3 +124,25 @@ building the Battle Cats Optimal-Pull Path Tracker.
   confirmation and applied to owned-state in bulk, then the user fixes any
   mistake with one click in the Cat Guide. ~90%+ accuracy on the samples
   (10/10 and 23/24 tiles, locked tiles correct).
+
+## M6 — Packaging & polish
+
+- **Packaging.** `docker compose up --build` runs both services (backend on
+  8000, frontend dev server on 5173 proxying `/api` to the backend service).
+  `backend/var/` is a mounted volume so the SQLite DB + godfat cache persist. A
+  `Makefile` wraps the common commands for non-Docker local dev.
+- **Region-swappable master list.** `master.discover_regions()` scans
+  `backend/data/` for `cat_guide_master*.json`; each file's `_meta.region` shows
+  up in the top-bar region selector, and owned-state is stored per region.
+- **Re-scrapers.** `scrapers/scrape_godfat.py` (banners) reuses the app's polite
+  cached client; `scrapers/update_cat_guide.py` (master list) regenerates the
+  region JSON from the wiki. Console output is forced to UTF-8 since godfat
+  descriptions contain `★`/`→` that crash the default Windows code page.
+- **Line endings.** `.gitattributes` normalises text to LF and marks images/
+  sqlite binary.
+- **Verification status.** The backend is fully built, run, and tested (38
+  passing tests; live godfat ingestion + the re-scraper exercised against the
+  real site). The React frontend is written but was **not** runtime-verified in
+  this environment because neither Node/pnpm nor a running Docker daemon was
+  available; it should be smoke-tested with `docker compose up` (or local
+  `pnpm dev`) on a machine that has them.

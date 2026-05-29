@@ -1,0 +1,8 @@
+# Normalise line endings: keep LF in the repo for source/text files.
+* text=auto eol=lf
+
+# Treat these as binary (never normalise / diff).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.sqlite binary
