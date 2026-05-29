@@ -1,7 +1,7 @@
 # Battle Cats Gacha Explorer
 
 A web app that helps a Battle Cats player find the **most resource-efficient pull
-path** to the units they don't yet own, using godfat seed-tracking data.
+path** to the units they don't yet own, using godfat seed-tracking data. Updated up to v15.3.0
 
 > ⚠️ **Experimental and not fully tested.** Every path the app shows is
 > re-simulated against the parsed godfat data before display, but **always
