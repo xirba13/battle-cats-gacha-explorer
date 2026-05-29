@@ -41,3 +41,36 @@ building the Battle Cats Optimal-Pull Path Tracker.
   same units and positions. This is the experimental-tool safety net.
 - **Experimental disclaimer.** Upstream marks the tool as not fully tested; the
   UI must show a "sanity-check on godfat before spending" disclaimer (M6).
+
+## M2 — godfat ingestion
+
+- **URL scheme (verified against the live page, not assumed).** The base page
+  `https://bc.godfat.org/?seed=SEED` contains a `<select id="event_select"
+  name="event">` whose options *are* the event list. It has three optgroups:
+  `label="Upcoming:"`, `label="Custom:"`, `label="Past:"`. We parse only the
+  **Upcoming** optgroup. Each `<option value="2026-05-29_947">` carries the
+  godfat event id; the option text is `"YYYY-MM-DD ~ YYYY-MM-DD: Description"`.
+  A specific banner's roll table is fetched at
+  `https://bc.godfat.org/?seed=SEED&event=EVENT_ID&count=N`.
+- **`count`.** Number of seed-track rows rendered. Higher = deeper search space
+  but slower page. Default `count=100` (plenty for typical targets; an 11-draw
+  needs only +11 rows). Configurable per request.
+- **One banner = one roll table.** A single-event fetch renders one roll
+  `<table>` with `pick('NA')` cells. `parse_tables` keeps only tables that
+  contain pick cells, so layout/other tables are ignored. (The bundled
+  `data.txt` fixture concatenates several banners → 5 tables; the parser handles
+  N transparently.)
+- **Special-banner detection (by option text).** Platinum Capsules matched on
+  `"100% Uber drop Rate in the PLATINUM CAPSULES"`; Legend Capsules on
+  `"Guaranteed Uber or Legend Rare from the Legend Capsules"`. These map to
+  `Banner.type` platinum/legend.
+- **Good citizen (godfat sends `robots: none`).** All fetches go through
+  `GodfatClient`: a descriptive User-Agent, a minimum inter-request interval
+  (rate limiting), exponential backoff on 429/5xx, and an on-disk cache keyed by
+  `(seed, event_id, count)`. Roll tables for a given seed are immutable, so they
+  cache indefinitely; the per-seed event list uses a short TTL.
+- **Name normalisation.** `names.NameMatcher` matches godfat unit names to the
+  master Cat Guide names: lowercased, HTML-unescaped, apostrophes removed
+  (`Li'l`→`lil`), `&`→`and`, punctuation collapsed to spaces. Unmatched godfat
+  names are logged to `unmatched_names.log` (and returned) for manual
+  reconciliation rather than being silently dropped.

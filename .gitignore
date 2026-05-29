@@ -21,6 +21,9 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Harness / editor local
+.claude/settings.local.json
+
 # OS / editor
 .DS_Store
 Thumbs.db
