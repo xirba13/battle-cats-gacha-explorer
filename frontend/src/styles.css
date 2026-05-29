@@ -1,0 +1,150 @@
+:root {
+  --teal: #1f8a8a;
+  --teal-dark: #0f6b6b;
+  --bg: #f4f6f6;
+  --ink: #1d2b2b;
+  --muted: #6b7b7b;
+  --owned: #ffffff;
+  --locked: #c9d2d2;
+  --accent: #e8a33d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 0 12px 60px; }
+
+/* ---- Top bar ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--teal);
+  color: #fff;
+  margin: 0 -12px 8px;
+  padding: 8px 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.topbar h1 { font-size: 18px; margin: 0; flex: 1; }
+.topbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0;
+}
+.topbar label { font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.topbar input, .topbar select {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+.seed input { width: 160px; }
+.resources { display: flex; gap: 8px; flex-wrap: wrap; }
+.resources input { width: 70px; }
+.owned-count { font-size: 13px; }
+.disclaimer {
+  background: #fff4d6;
+  color: #6b4e00;
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 12px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+/* ---- Tabs ---- */
+.tabs { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+.tab {
+  border: 1px solid var(--teal);
+  background: #fff;
+  color: var(--teal-dark);
+  padding: 8px 14px;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.tab.active { background: var(--teal); color: #fff; font-weight: 600; }
+
+.error-bar {
+  background: #ffe1e1;
+  color: #8a1f1f;
+  padding: 8px 12px;
+  border-radius: 5px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+
+.content { background: #fff; border-radius: 0 8px 8px 8px; padding: 14px; min-height: 300px; }
+.placeholder { color: var(--muted); padding: 40px; text-align: center; }
+.loading { padding: 40px; text-align: center; color: var(--muted); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* ---- Cat Guide ---- */
+.guide-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e0e6e6;
+  margin-bottom: 10px;
+}
+.guide-toolbar label { font-size: 13px; display: flex; gap: 4px; align-items: center; }
+.guide-page { margin-bottom: 18px; }
+.page-head { font-size: 15px; margin: 6px 0; padding-left: 8px; border-left: 5px solid var(--muted); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+@media (max-width: 700px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+
+.tile {
+  position: relative;
+  border: 2px solid #d0d8d8;
+  border-radius: 8px;
+  background: var(--owned);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.05s;
+}
+.tile:hover { transform: scale(1.04); z-index: 2; }
+.tile img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.tile.locked { filter: grayscale(1) opacity(0.4); background: var(--locked); }
+.tile-name { font-size: 10px; text-align: center; line-height: 1.1; margin-top: 2px; max-height: 24px; overflow: hidden; }
+
+/* rarity left border colors */
+.r-normal { border-left-color: #9a9a9a; }
+.r-special { border-left-color: #4caf50; }
+.r-rare { border-left-color: #f0c419; }
+.r-superrare { border-left-color: #e8853d; }
+.r-uber { border-left-color: #d34d8a; }
+.r-legend { border-left-color: #8a4dd3; }
+
+.tile.owned.r-uber { box-shadow: inset 0 0 0 2px #d34d8a33; }
+
+.pend-flag {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.tile.pending-unlocked { outline: 3px solid #4caf50; }
+.tile.pending-locked { outline: 3px dashed #b0b0b0; }

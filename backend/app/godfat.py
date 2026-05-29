@@ -234,18 +234,23 @@ def ingest_upcoming(
     count: int = DEFAULT_COUNT,
     include_types: Optional[set[str]] = None,
     resources: Optional[dict] = None,
+    event_ids: Optional[set[str]] = None,
 ) -> Ingestion:
-    """Fetch all Upcoming banners for a seed and return them as Banners.
+    """Fetch Upcoming banners for a seed and return them as Banners.
 
-    Special banners (platinum/legend) are excluded automatically if the player
-    has 0 of the relevant ticket (so we don't fetch tables we can't use), when
-    `resources` is provided.
+    If `event_ids` is given, only those banners are fetched (the recommended
+    path — godfat pages are slow, so the UI lets the user pick banners rather
+    than fetching all 30+). Special banners (platinum/legend) are excluded
+    automatically if the player has 0 of the relevant ticket, when `resources`
+    is provided.
     """
     resources = pathfinder.normalize_resources(resources) if resources else None
     events = client.fetch_event_list(seed)
     banners: list[pathfinder.Banner] = []
     skipped: list[dict] = []
     for ev in events:
+        if event_ids is not None and ev.event_id not in event_ids:
+            continue
         if include_types and ev.banner_type not in include_types:
             continue
         if resources is not None:
