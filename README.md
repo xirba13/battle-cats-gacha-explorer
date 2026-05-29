@@ -109,8 +109,9 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
   (or `--out banners.json` to dump parsed tables; reuses the app's polite,
   cached, rate-limited client).
 - **Master Cat Guide list** (region-swappable): `python scrapers/update_cat_guide.py
-  --input Cat_Guide.htm --region en --output backend/data/cat_guide_master.json`
-  (or `--url https://battlecats.miraheze.org/wiki/Cat_Guide`). Drop a
+  --url https://battlecats.miraheze.org/wiki/Cat_Guide --region en --output
+  backend/data/cat_guide_master.json` (or, if Miraheze blocks the bot, Save the
+  page in your browser and pass it with `--input Cat_Guide.html`). Drop a
   `cat_guide_master_<region>.json` into `backend/data/` and the app will offer
   that region in the top-bar selector.
 
