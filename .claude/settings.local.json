@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import json; d=json.load\\(open\\('cat_guide_master.json',encoding='utf-8'\\)\\); print\\(json.dumps\\(d['_meta'],indent=2,ensure_ascii=False\\)\\); print\\('first units:'\\); [print\\(u\\) for u in d['units'][:3]]; print\\('total',len\\(d['units']\\)\\)\")",
+      "Bash(pnpm --version)",
+      "Bash(pip --version)",
+      "PowerShell(node --version)",
+      "PowerShell(pnpm --version)",
+      "PowerShell(npm --version)",
+      "PowerShell(docker --version)",
+      "PowerShell(\"---pnpm---\")",
+      "PowerShell(\"---npm---\")",
+      "PowerShell(\"---docker---\")",
+      "Bash(git init *)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest -q)",
+      "Bash(python -m venv .venv)",
+      "Bash(./.venv/Scripts/python.exe -m pip install --quiet --upgrade pip)",
+      "Bash(./.venv/Scripts/python.exe -m pip install --quiet -r requirements.txt)",
+      "Bash(./.venv/Scripts/python.exe -m pip list)",
+      "Bash(./.venv/Scripts/python.exe -m pytest)"
+    ]
+  }
+}
