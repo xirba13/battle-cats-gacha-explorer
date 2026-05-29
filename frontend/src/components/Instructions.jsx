@@ -8,15 +8,15 @@ export default function Instructions({ disclaimer }) {
 
       <p className="notice">
         ℹ️ {disclaimer ||
-          "This tool is experimental and not fully tested. Always sanity-check a " +
-            "path on godfat.org before spending real resources."}
+          "This tool is experimental and not fully tested. Always check a " +
+            "path on bc.godfat.org before spending real resources."}
       </p>
 
       <h3>Before you start</h3>
       <ul>
         <li>
-          <b>You must already be seed-tracking.</b> Like godfat, this app does not
-          find your seed — you enter it. Re-read your seed after every pull session.
+          <b>You must already be seed-tracking.</b> This app does not
+          find your seed, you need to provide it. you can get it in bc-seek.godfat.org/seek. Re-write your seed after every pull session.
         </li>
         <li>
           When screenshotting the Cat Guide, use the <b>default view with NO filter
@@ -26,7 +26,7 @@ export default function Instructions({ disclaimer }) {
 
       <h3>The top bar</h3>
       <ul>
-        <li>Set your <b>region</b>, your current <b>seed</b>, and your <b>resources</b>
+        <li>Set your <b>region</b> (only BCEN avaliable), your current <b>seed</b>, and your <b>resources</b>
           {" "}(rare tickets, cat food, platinum tickets, legend tickets).</li>
         <li>These are saved automatically and used by the path finder.</li>
       </ul>
@@ -71,7 +71,7 @@ export default function Instructions({ disclaimer }) {
       </ul>
 
       <p className="muted small">
-        Names and icons come from the Battle Cats wiki Cat Guide (BCEN by default).
+        Names and icons come from the Battle Cats wiki (Miraheze) Cat Guide (BCEN by default).
         Always confirm a path on <a href="https://bc.godfat.org/" target="_blank"
           rel="noreferrer">godfat.org</a> before spending.
       </p>
