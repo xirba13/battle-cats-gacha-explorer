@@ -21,6 +21,9 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Local-only design notes
+DECISIONS.md
+
 # Harness / editor local
 .claude/settings.local.json
 
