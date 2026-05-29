@@ -189,3 +189,13 @@ DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
 
 See [DECISIONS.md](DECISIONS.md) for the reverse-engineered godfat URL scheme,
 banner-mechanic confirmations, and other non-obvious choices.
+
+## License
+
+Released into the **public domain** under [The Unlicense](LICENSE) — do whatever
+you like with it, no attribution required.
+
+The bundled unit names and icons (`frontend/public/icons/`,
+`backend/data/cat_guide_master.json`) come from the
+[Battle Cats Wiki](https://battlecats.miraheze.org/) and remain subject to their
+own terms; The Unlicense covers this project's code, not those third-party assets.
