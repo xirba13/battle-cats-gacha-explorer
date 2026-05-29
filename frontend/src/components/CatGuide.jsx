@@ -14,6 +14,7 @@ const RARITY_CLASS = {
 export default function CatGuide({ master, applyOwned, reloadState, setError, pending }) {
   const [filter, setFilter] = useState("all"); // all | owned | missing
   const [rarity, setRarity] = useState("all");
+  const [query, setQuery] = useState("");
 
   const pages = useMemo(() => {
     if (!master) return [];
@@ -33,12 +34,16 @@ export default function CatGuide({ master, applyOwned, reloadState, setError, pe
 
   if (!master) return <div className="loading">Loading Cat Guide…</div>;
 
+  const q = query.trim().toLowerCase();
   const visible = (u) => {
+    if (q && !u.name.toLowerCase().includes(q)) return false;
     if (rarity !== "all" && u.rarity_guide !== rarity) return false;
     if (filter === "owned" && !u.owned) return false;
     if (filter === "missing" && u.owned) return false;
     return true;
   };
+
+  const matchCount = q ? master.units.filter(visible).length : null;
 
   const toggle = async (u) => {
     const next = !u.owned;
@@ -57,6 +62,20 @@ export default function CatGuide({ master, applyOwned, reloadState, setError, pe
   return (
     <div className="cat-guide">
       <div className="guide-toolbar">
+        <div className="guide-search">
+          <input
+            type="search"
+            value={query}
+            placeholder="🔍 Search unit name…"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button className="small" onClick={() => setQuery("")}>clear</button>
+          )}
+          {matchCount != null && (
+            <span className="muted small">{matchCount} match{matchCount === 1 ? "" : "es"}</span>
+          )}
+        </div>
         <span className="muted">
           {ownedCount} / {master.units.length} owned ({master.meta.region})
         </span>
