@@ -42,6 +42,26 @@ building the Battle Cats Optimal-Pull Path Tracker.
 - **Experimental disclaimer.** Upstream marks the tool as not fully tested; the
   UI must show a "sanity-check on godfat before spending" disclaimer (M6).
 
+### Mechanics refinements (post-M1)
+
+- **Plain 11-roll on non-guaranteed banners.** On a banner whose godfat
+  *Guaranteed* columns are empty (not a guaranteed-uber event), an 11-roll is
+  simply **11 consecutive normal pulls for 1500 cat food** (the 11th is the free
+  bonus — no guaranteed uber). The search now offers this `multi_11` action
+  whenever a normal banner position has no `guaranteed_unit` and 11 pulls can be
+  simulated; the landing position is computed by following the normal chain 11
+  times (so duplicate-rare track switches are honoured). Guaranteed banners keep
+  the `guaranteed_11` action (10 normal + the guaranteed uber). Both cost 1500
+  cat food and cannot be paid with tickets.
+- **Single pulls: rare tickets first, then cat food.** A single pull no longer
+  branches into a ticket-vs-food choice. While the player still has rare tickets
+  (`tickets_used < rare_tickets budget`) a single pull **must** spend a ticket;
+  only once tickets are exhausted do single pulls cost 150 cat food. This
+  reflects how the resource is actually spent (tickets are the "free" currency)
+  and is enforced deterministically per search state, so a path's ticket/food
+  split is fixed by how many singles precede it. (11-rolls are unaffected —
+  always cat food.)
+
 ## M2 — godfat ingestion
 
 - **URL scheme (verified against the live page, not assumed).** The base page

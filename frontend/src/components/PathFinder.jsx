@@ -295,7 +295,7 @@ function Results({ result, onFollow }) {
                 ({a.position_from}
                 {" → "}
                 {a.position_to})
-                {a.action_type === "guaranteed_11" ? (
+                {a.units_pulled.length > 1 ? (
                   <span className="draw"> — {a.units_pulled.join(", ")}</span>
                 ) : (
                   <span className="draw"> — {a.units_pulled[0]}</span>
@@ -317,6 +317,8 @@ function actionLabel(a) {
   switch (a.action_type) {
     case "guaranteed_11":
       return "Guaranteed 11-draw";
+    case "multi_11":
+      return "11-roll (multi)";
     case "platinum":
       return "Platinum pull";
     case "legend":

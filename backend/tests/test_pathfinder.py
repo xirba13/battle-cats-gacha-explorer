@@ -103,6 +103,60 @@ def test_cat_food_pull_costs_150():
     assert sols[0].cost["rare_tickets"] == 0
 
 
+def test_single_pulls_use_tickets_first_then_cat_food():
+    # Reaching unit "e" needs 5 single pulls; only 2 rare tickets available.
+    banner = _linear_banner(["a", "b", "c", "d", "e"])
+    sols = pf.find_paths([banner], {"e"},
+                         resources={"rare_tickets": 2, "cat_food": 10000},
+                         mode="RESOURCE_LIMIT", max_steps=20000, max_solutions=3)
+    assert sols
+    best = sols[0]
+    # 2 ticket pulls + 3 cat-food pulls (tickets spent first).
+    assert best.cost["rare_tickets"] == 2
+    assert best.cost["cat_food"] == 3 * pf.CAT_FOOD_PER_PULL
+    payments = [a.payment for a in best.actions]
+    assert payments == [pf.PAY_RARE_TICKET, pf.PAY_RARE_TICKET,
+                        pf.PAY_CAT_FOOD, pf.PAY_CAT_FOOD, pf.PAY_CAT_FOOD]
+    ok, err = pf.verify_solution([banner], best)
+    assert ok, err
+
+
+def test_no_cat_food_single_while_tickets_remain():
+    banner = _linear_banner(["Target"])
+    sols = pf.find_paths([banner], {"Target"},
+                         resources={"rare_tickets": 5, "cat_food": 10000},
+                         mode="RESOURCE_LIMIT", max_steps=10000)
+    assert sols
+    # With tickets available, the single pull must be a ticket, never cat food.
+    assert sols[0].cost == {"rare_tickets": 1, "cat_food": 0,
+                            "platinum_tickets": 0, "legend_tickets": 0}
+
+
+def test_plain_11_roll_on_non_guaranteed_banner():
+    # 15-unit non-guaranteed banner; target is the 11th cat. No rare tickets,
+    # so 11 singles would cost 1650 cat food but a single 11-roll costs 1500.
+    banner = _linear_banner([f"u{i}" for i in range(15)])
+    sols = pf.find_paths([banner], {"u10"},
+                         resources={"rare_tickets": 0, "cat_food": 1700},
+                         mode="RESOURCE_LIMIT", max_steps=50000, max_solutions=5)
+    assert sols
+    best = sols[0]
+    assert best.actions[0].action_type == pf.ACTION_MULTI_11
+    assert len(best.actions[0].units_pulled) == 11
+    assert best.cost["cat_food"] == pf.CAT_FOOD_PER_11_DRAW   # 1500, cheaper than 1650
+    assert best.cost["rare_tickets"] == 0
+    ok, err = pf.verify_solution([banner], best)
+    assert ok, err
+
+
+def test_plain_11_roll_advances_11_positions():
+    banner = _linear_banner([f"u{i}" for i in range(20)])
+    units, hits, _c, next_pos, ok = pf._simulate_11_normal("1A", None, banner.rolls, 0, {})
+    assert ok and len(units) == 11
+    assert units == [f"u{i}" for i in range(11)]
+    assert next_pos == "12A"   # 1A + 11 normal pulls
+
+
 def test_11_draw_costs_1500():
     banner = _linear_banner([f"u{i}" for i in range(20)],
                             guaranteed=("1A", "GuaranteedTarget", "12A"))

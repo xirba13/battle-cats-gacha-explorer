@@ -98,7 +98,8 @@ class Banner:
 
 # action_type values
 ACTION_SINGLE = "single"          # one pull on a normal/rare banner
-ACTION_GUARANTEED_11 = "guaranteed_11"  # 11-draw on a normal/rare banner
+ACTION_GUARANTEED_11 = "guaranteed_11"  # 11-draw with a guaranteed uber (guaranteed banner)
+ACTION_MULTI_11 = "multi_11"      # plain 11-roll (11 normal pulls) on a non-guaranteed banner
 ACTION_PLATINUM = "platinum"      # one pull on the Platinum Capsules banner
 ACTION_LEGEND = "legend"          # one pull on the Legend Capsules banner
 
@@ -324,6 +325,8 @@ def find_paths(
 
     res_limit_mode = mode == MODE_RESOURCE_LIMIT
     caps = resources  # only enforced in RESOURCE_LIMIT mode
+    # Single pulls spend rare tickets first; cat food only once tickets run out.
+    rare_ticket_budget = resources["rare_tickets"]
 
     # visited[state_key] = Pareto frontier of resource vectors reaching it.
     visited: dict = {}
@@ -402,7 +405,7 @@ def find_paths(
 
             if banner.type == BANNER_NORMAL:
                 _expand_normal(
-                    pq, counter, visited, visited_key, within_caps,
+                    pq, counter, visited, visited_key, within_caps, rare_ticket_budget,
                     b_idx, banner, entry, pos, collected, last_unit, usage, res,
                     path, target_to_id,
                 )
@@ -458,39 +461,40 @@ def _bump_usage(usage, b_idx):
     return tuple(u)
 
 
-def _expand_normal(pq, counter, visited, visited_key, within_caps, b_idx, banner,
-                   entry, pos, collected, last_unit, usage, res, path, target_to_id):
+def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_budget,
+                   b_idx, banner, entry, pos, collected, last_unit, usage, res, path,
+                   target_to_id):
     rt, cf, pt, lt = res
     new_usage = _bump_usage(usage, b_idx)
 
-    # --- single pull -------------------------------------------------------
+    # --- single pull: rare tickets first, then cat food --------------------
     unit, next_p, _note = get_next_pos_normal(pos, entry.get("unit"), banner.rolls, last_unit)
     if unit and next_p:
         new_collected, is_target = _apply_unit(unit, collected, target_to_id)
         targets_hit = [unit] if is_target else []
-        units = [unit]
-        # Pay with a rare ticket.
-        res_rt = (rt + 1, cf, pt, lt)
-        if within_caps(res_rt):
-            act = Action(b_idx, ACTION_SINGLE, PAY_RARE_TICKET, pos, next_p,
-                         units, targets_hit, {"rare_tickets": 1, "cat_food": 0,
-                                              "platinum_tickets": 0, "legend_tickets": 0})
+        if rt < rare_ticket_budget:
+            # A rare ticket is still available -> the player must use it (no
+            # spending cat food on singles while tickets remain).
+            res_s = (rt + 1, cf, pt, lt)
+            payment = PAY_RARE_TICKET
+            cost = {"rare_tickets": 1, "cat_food": 0, "platinum_tickets": 0, "legend_tickets": 0}
+        else:
+            # Out of rare tickets -> single pulls now cost cat food.
+            res_s = (rt, cf + CAT_FOOD_PER_PULL, pt, lt)
+            payment = PAY_CAT_FOOD
+            cost = {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_PULL,
+                    "platinum_tickets": 0, "legend_tickets": 0}
+        if within_caps(res_s):
+            act = Action(b_idx, ACTION_SINGLE, payment, pos, next_p, [unit], targets_hit, cost)
             _try_push(pq, counter, visited, visited_key, next_p, new_collected,
-                      unit, new_usage, res_rt, act, path)
-        # Pay with cat food.
-        res_cf = (rt, cf + CAT_FOOD_PER_PULL, pt, lt)
-        if within_caps(res_cf):
-            act = Action(b_idx, ACTION_SINGLE, PAY_CAT_FOOD, pos, next_p,
-                         units, targets_hit, {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_PULL,
-                                              "platinum_tickets": 0, "legend_tickets": 0})
-            _try_push(pq, counter, visited, visited_key, next_p, new_collected,
-                      unit, new_usage, res_cf, act, path)
+                      unit, new_usage, res_s, act, path)
 
-    # --- guaranteed 11-draw ------------------------------------------------
+    # --- 11-roll (cat food only) -------------------------------------------
     g_unit = entry.get("guaranteed_unit")
     g_next = entry.get("guaranteed_next")
+    res_11 = (rt, cf + CAT_FOOD_PER_11_DRAW, pt, lt)
     if g_unit and g_next:
-        res_11 = (rt, cf + CAT_FOOD_PER_11_DRAW, pt, lt)
+        # Guaranteed banner: the 11-roll guarantees an uber as the 11th cat.
         if within_caps(res_11):
             units, targets_hit, new_collected, ok = _simulate_11(
                 pos, last_unit, banner.rolls, g_unit, collected, target_to_id)
@@ -501,6 +505,19 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, b_idx, banner
                               "platinum_tickets": 0, "legend_tickets": 0})
                 _try_push(pq, counter, visited, visited_key, g_next, new_collected,
                           g_unit, new_usage, res_11, act, path)
+    else:
+        # Non-guaranteed banner (guaranteed columns empty): a plain 11-roll is
+        # just 11 consecutive normal pulls for the same 1500 cat food.
+        if within_caps(res_11):
+            units, targets_hit, new_collected, next_11, ok = _simulate_11_normal(
+                pos, last_unit, banner.rolls, collected, target_to_id)
+            if ok:
+                act = Action(b_idx, ACTION_MULTI_11, PAY_CAT_FOOD, pos, next_11,
+                             units, targets_hit,
+                             {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_11_DRAW,
+                              "platinum_tickets": 0, "legend_tickets": 0})
+                _try_push(pq, counter, visited, visited_key, next_11, new_collected,
+                          units[-1], new_usage, res_11, act, path)
 
 
 def _simulate_11(pos, last_unit, rolls, guaranteed_unit, collected, target_to_id):
@@ -522,6 +539,24 @@ def _simulate_11(pos, last_unit, rolls, guaranteed_unit, collected, target_to_id
         targets_hit.append(guaranteed_unit)
     units.append(guaranteed_unit)
     return units, targets_hit, temp_collected, True
+
+
+def _simulate_11_normal(pos, last_unit, rolls, collected, target_to_id):
+    """Simulate a plain 11-roll: 11 consecutive normal pulls on a non-guaranteed
+    banner. Returns (units[11], targets_hit, new_collected, final_next_pos, ok)."""
+    units: list[str] = []
+    targets_hit: list[str] = []
+    temp_pos, temp_last, temp_collected = pos, last_unit, collected
+    for _ in range(11):
+        u, np, _ = get_next_pos_normal(temp_pos, None, rolls, temp_last)
+        if not u or not np:
+            return units, targets_hit, collected, None, False
+        temp_collected, is_t = _apply_unit(u, temp_collected, target_to_id)
+        if is_t:
+            targets_hit.append(u)
+        units.append(u)
+        temp_pos, temp_last = np, u
+    return units, targets_hit, temp_collected, temp_pos, True
 
 
 def _expand_special(pq, counter, visited, visited_key, within_caps, b_idx, banner,
@@ -621,6 +656,20 @@ def verify_solution(banners, solution: Solution) -> tuple[bool, list[str]]:
                 errors.append(f"Step {step}: 11-draw next {g_next} != {act.position_to}")
                 return False, errors
             pos, last_unit = g_next, g_unit
+        elif act.action_type == ACTION_MULTI_11:
+            units, _hits, _c, next_11, ok = _simulate_11_normal(
+                pos, last_unit, banner.rolls, 0, {})
+            if not ok:
+                errors.append(f"Step {step}: 11-roll simulation failed at {pos}")
+                return False, errors
+            if units != act.units_pulled:
+                errors.append(f"Step {step}: 11-roll units mismatch at {pos}: "
+                              f"{act.units_pulled} != {units}")
+                return False, errors
+            if next_11 != act.position_to:
+                errors.append(f"Step {step}: 11-roll next {next_11} != {act.position_to}")
+                return False, errors
+            pos, last_unit = next_11, units[-1]
         else:
             # single pull (normal/platinum/legend)
             unit, next_p, _n = get_next_pos_normal(pos, banner.rolls.get(pos, {}).get("unit"),
