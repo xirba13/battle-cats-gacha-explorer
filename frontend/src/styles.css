@@ -49,6 +49,7 @@ body {
 .seed input { width: 160px; }
 .resources { display: flex; gap: 8px; flex-wrap: wrap; }
 .resources input { width: 70px; }
+.res-icon { height: 26px; width: 26px; object-fit: contain; vertical-align: middle; }
 .owned-count { font-size: 13px; }
 .disclaimer {
   background: #fff4d6;
@@ -168,7 +169,7 @@ button {
   cursor: pointer;
   font-size: 14px;
 }
-button:hover:not(:disabled) { background: #eafafa; }
+button:hover:not(:disabled) { background: #bfe0e0; border-color: var(--teal-dark); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--teal); color: #fff; }
 button.primary:hover:not(:disabled) { background: var(--teal-dark); }
@@ -244,6 +245,14 @@ button.small { padding: 4px 8px; font-size: 12px; }
 .target-tag { color: #b0590f; font-weight: 600; }
 .banner-ref { color: var(--teal-dark); font-weight: 600; }
 
+/* ---- Instructions ---- */
+.instructions { max-width: 820px; line-height: 1.5; }
+.instructions h2 { margin-top: 0; }
+.instructions h3 { margin: 18px 0 6px; color: var(--teal-dark); }
+.instructions ul, .instructions ol { margin: 6px 0; padding-left: 22px; }
+.instructions li { margin: 4px 0; }
+.instructions a { color: var(--teal-dark); }
+
 .history { margin-top: 22px; }
 .history table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .history th, .history td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #eee; }
@@ -254,6 +263,13 @@ button.small { padding: 4px 8px; font-size: 12px; }
   border-left: 5px solid var(--accent);
   padding: 8px 12px;
   border-radius: 4px;
+}
+.notice {
+  background: #e7f3fb;
+  border-left: 5px solid #3d8ad3;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 .ss-controls {
   display: flex;

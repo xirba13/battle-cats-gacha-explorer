@@ -2,10 +2,10 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 
 const RES_FIELDS = [
-  { key: "rare_tickets", label: "Rare Tickets", icon: "🎫" },
-  { key: "cat_food", label: "Cat Food", icon: "🍱" },
-  { key: "platinum_tickets", label: "Platinum Tickets", icon: "🟣" },
-  { key: "legend_tickets", label: "Legend Tickets", icon: "🌟" },
+  { key: "rare_tickets", label: "Rare Tickets", img: "rare_ticket.png" },
+  { key: "cat_food", label: "Cat Food", img: "cat_food.png" },
+  { key: "platinum_tickets", label: "Platinum Tickets", img: "platinum_ticket.png" },
+  { key: "legend_tickets", label: "Legend Tickets", img: "legend_ticket.png" },
 ];
 
 export default function TopBar({ state, reloadState, setError }) {
@@ -52,7 +52,7 @@ export default function TopBar({ state, reloadState, setError }) {
   return (
     <header className="topbar">
       <div className="topbar-row">
-        <h1>🐾 Battle Cats Path Tracker</h1>
+        <h1>🐾 Battle Cats Gacha Explorer</h1>
         <div className="region">
           <label>Region</label>
           <select value={state.region} onChange={(e) => changeRegion(e.target.value)}>
@@ -78,7 +78,7 @@ export default function TopBar({ state, reloadState, setError }) {
         <div className="resources">
           {RES_FIELDS.map((f) => (
             <label key={f.key} title={f.label}>
-              <span>{f.icon}</span>
+              <img className="res-icon" src={`/top_icons/${f.img}`} alt={f.label} />
               <input
                 type="number"
                 min="0"

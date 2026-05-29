@@ -73,6 +73,11 @@ export default function ScreenshotImport({ master, applyOwned, reloadState, goTo
           which unit it is. Upload pages <b>in order</b> and set the page number.
           Then confirm/fix the results in the Cat Guide tab (one click each).
         </p>
+        <p className="notice">
+          ℹ️ Detection is <b>not perfect</b>. Always review the results — you can
+          also add or mark any unit as owned/locked <b>manually in the Cat Guide</b>{" "}
+          by clicking its tile, with or without using screenshots at all.
+        </p>
       </div>
 
       <div className="ss-controls">

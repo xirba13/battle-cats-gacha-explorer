@@ -4,11 +4,13 @@ import TopBar from "./components/TopBar.jsx";
 import CatGuide from "./components/CatGuide.jsx";
 import PathFinder from "./components/PathFinder.jsx";
 import ScreenshotImport from "./components/ScreenshotImport.jsx";
+import Instructions from "./components/Instructions.jsx";
 
 const TABS = [
   { id: "screenshot", label: "1 · Screenshot Import" },
   { id: "guide", label: "2 · Cat Guide" },
   { id: "paths", label: "3 · Path Finder" },
+  { id: "help", label: "4 · Instructions" },
 ];
 
 export default function App() {
@@ -100,6 +102,7 @@ export default function App() {
             setError={setError}
           />
         )}
+        {tab === "help" && <Instructions disclaimer={state?.disclaimer} />}
       </main>
     </div>
   );

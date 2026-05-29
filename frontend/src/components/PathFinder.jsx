@@ -168,7 +168,7 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
         <button disabled={!seed || loadingEvents} onClick={fetchEvents}>
           {loadingEvents ? "Fetching…" : "1 · Fetch Upcoming banners"}
         </button>
-        <span className="muted small">godfat pages are slow — results are cached per seed.</span>
+        <span className="muted small">godfat pages might be slow — results are cached per seed.</span>
       </div>
 
       {followMsg && <div className="follow-msg">✅ {followMsg}</div>}
@@ -221,8 +221,8 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
 
       {searching && (
         <div className="loading">
-          Fetching banners and computing Pareto-optimal paths… this can take a
-          while on slow godfat days.
+          Fetching banners and computing paths… this can take a
+          while if godfat is saturated.
         </div>
       )}
 

@@ -21,10 +21,9 @@ CACHE_DIR = os.environ.get("BCPE_CACHE", os.path.join(VAR_DIR, "godfat_cache"))
 UNMATCHED_LOG = os.path.join(VAR_DIR, "unmatched_names.log")
 
 DISCLAIMER = (
-    "This tool is experimental and ports an upstream pathfinder that the original "
-    "author marks as not fully tested. Every path is re-simulated against the "
-    "parsed godfat data before being shown, but ALWAYS sanity-check a path on "
-    "godfat.org before spending real resources."
+    "This tool is experimental and not fully tested. Every path is re-simulated "
+    "against the parsed godfat data before being shown, but ALWAYS sanity-check a "
+    "path on godfat.org before spending real resources."
 )
 
 app = FastAPI(title="Battle Cats Optimal-Pull Path Tracker", version="0.1.0")
