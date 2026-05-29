@@ -157,6 +157,27 @@ def test_plain_11_roll_advances_11_positions():
     assert next_pos == "12A"   # 1A + 11 normal pulls
 
 
+def test_path_trimmed_to_last_target():
+    # Two targets but only "Target" is reachable, so the best count is 1 and the
+    # search keeps exploring past it — the returned path must still end exactly
+    # at the last target, with no trailing waste pulls.
+    banner = _linear_banner(["a", "Target", "c", "d", "e", "f", "g"])
+    sols = pf.find_paths([banner], {"Target", "NeverInBanner"},
+                         resources={"rare_tickets": 10},
+                         mode="RESOURCE_LIMIT", max_steps=20000, max_solutions=10)
+    assert sols
+    best = sols[0]
+    assert best.collected_units == ["Target"]
+    assert best.actions[-1].targets_hit == ["Target"]   # ends on the target
+    assert len(best.actions) == 2                        # pull a, then Target
+    assert best.cost["rare_tickets"] == 2                # no trailing pulls counted
+    assert best.final_position == "3A"
+    for s in sols:
+        assert s.actions[-1].targets_hit, "no solution should end on a non-target pull"
+        ok, err = pf.verify_solution([banner], s)
+        assert ok, err
+
+
 def test_11_draw_costs_1500():
     banner = _linear_banner([f"u{i}" for i in range(20)],
                             guaranteed=("1A", "GuaranteedTarget", "12A"))

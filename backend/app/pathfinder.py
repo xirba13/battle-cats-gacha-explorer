@@ -588,7 +588,23 @@ def _expand_special(pq, counter, visited, visited_key, within_caps, b_idx, banne
 
 def _build_solutions(banners, raw_solutions, target_list) -> list[Solution]:
     out: list[Solution] = []
+    seen: set = set()
     for actions, final_pos, collected in raw_solutions:
+        # Trim trailing actions that collect no new target: a path's job is done
+        # at the last target it picks up; anything after only wastes resources.
+        last_hit = max((i for i, a in enumerate(actions) if a.targets_hit), default=-1)
+        if last_hit < 0:
+            continue
+        actions = actions[: last_hit + 1]
+        final_position = actions[-1].position_to
+
+        # Distinct trimmed paths only (different routes can pad to the same one).
+        sig = tuple((a.banner_index, a.action_type, a.position_from, a.position_to)
+                    for a in actions)
+        if sig in seen:
+            continue
+        seen.add(sig)
+
         cost = empty_resources()
         collected_units: list[str] = []
         for a in actions:
@@ -598,7 +614,7 @@ def _build_solutions(banners, raw_solutions, target_list) -> list[Solution]:
         out.append(Solution(
             actions=actions,
             cost=cost,
-            final_position=final_pos,
+            final_position=final_position,
             collected_count=bin(collected).count("1"),
             collected_units=collected_units,
         ))

@@ -61,6 +61,16 @@ building the Battle Cats Optimal-Pull Path Tracker.
   and is enforced deterministically per search state, so a path's ticket/food
   split is fixed by how many singles precede it. (11-rolls are unaffected —
   always cat food.)
+- **Paths end at the last target.** Targets are *all* not-owned units in the
+  selected banners (often dozens), but usually only a few are actually
+  reachable. Since the search rarely collects the entire set, it keeps exploring
+  past the best-reachable count, generating count-N states padded with trailing
+  pulls that collect non-targets. `_build_solutions` therefore **trims every
+  returned path at its last target-collecting action** (recomputing cost and
+  final position from the trimmed path) and de-duplicates the results — distinct
+  routes that padded to the same prefix collapse into one. Pre-target actions
+  (e.g. an 11-roll used purely to advance the seed so a Legend pull lands on the
+  wanted uber) are kept; only post-last-target waste is removed.
 
 ## M2 — godfat ingestion
 
