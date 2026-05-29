@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 
 const TYPE_BADGE = {
@@ -31,8 +31,18 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [followMsg, setFollowMsg] = useState(null);
+  const [lastSig, setLastSig] = useState(null);
+  const resultsRef = useRef(null);
 
   const seed = state?.seed;
+
+  // A signature of the current search inputs; used to disable the button while
+  // the displayed results are still up to date, and re-enable it on any change.
+  const searchSig = useMemo(
+    () => JSON.stringify({ seed, count, wishlist: wishlist.trim(), ids: [...selected].sort() }),
+    [seed, count, wishlist, selected]
+  );
+  const upToDate = result && lastSig === searchSig;
 
   const loadHistory = async () => {
     try {
@@ -97,6 +107,11 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
           : null,
       };
       setResult(await api.search(payload));
+      setLastSig(searchSig);
+      // Bring the freshly-computed paths into view.
+      requestAnimationFrame(() =>
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
     } catch (e) {
       setError(e.message);
     } finally {
@@ -193,8 +208,12 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
                 onChange={(e) => setWishlist(e.target.value)}
               />
             </label>
-            <button className="primary" disabled={searching} onClick={runSearch}>
-              {searching ? "Searching… (may take a while)" : "3 · Find optimal paths"}
+            <button className="primary" disabled={searching || upToDate} onClick={runSearch}>
+              {searching
+                ? "Searching… (may take a while)"
+                : upToDate
+                ? "✓ Paths shown below — change a banner or the wishlist to search again"
+                : "3 · Find optimal paths"}
             </button>
           </div>
         </div>
@@ -207,7 +226,9 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
         </div>
       )}
 
-      {result && <Results result={result} onFollow={followPath} />}
+      <div ref={resultsRef}>
+        {result && <Results result={result} onFollow={followPath} />}
+      </div>
 
       <History history={history} />
     </div>
@@ -215,6 +236,11 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
 }
 
 function Results({ result, onFollow }) {
+  const bannerName = (idx) => {
+    const b = result.banners?.find((x) => x.index === idx);
+    return b ? b.name : `banner ${idx + 1}`;
+  };
+
   if (!result.targets.length)
     return (
       <div className="results">
@@ -262,7 +288,11 @@ function Results({ result, onFollow }) {
           <ol className="sol-steps">
             {sol.actions.map((a, j) => (
               <li key={j} className={a.targets_hit.length ? "hit" : ""}>
-                <b>{actionLabel(a)}</b> on banner {a.banner_index + 1} ({a.position_from}
+                <b>{actionLabel(a)}</b> on{" "}
+                <span className="banner-ref" title={bannerName(a.banner_index)}>
+                  {bannerName(a.banner_index)}
+                </span>{" "}
+                ({a.position_from}
                 {" → "}
                 {a.position_to})
                 {a.action_type === "guaranteed_11" ? (
