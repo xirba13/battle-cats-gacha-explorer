@@ -195,7 +195,6 @@ banner-mechanic confirmations, and other non-obvious choices.
 Released into the **public domain** under [The Unlicense](LICENSE) — do whatever
 you like with it, no attribution required.
 
-The bundled unit names and icons (`frontend/public/icons/`,
-`backend/data/cat_guide_master.json`) come from the
+The bundled unit names and icons come from the
 [Battle Cats Wiki](https://battlecats.miraheze.org/) and remain subject to their
 own terms; The Unlicense covers this project's code, not those third-party assets.
