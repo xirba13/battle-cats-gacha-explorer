@@ -113,6 +113,24 @@ def test_followed_path_marks_owned_and_decrements(db, master):
     assert applied["owned_count"] == len(db.get_owned())
 
 
+def test_followed_path_counts_only_new_units(db, master):
+    # Pre-own "Cat"; the path pulls Cat (already owned) + two targets.
+    cat_idx = master.index_for_name("Cat")
+    db.set_owned(cat_idx, True)
+    db.set_resources({"rare_tickets": 10})
+    banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
+    result = services.run_search([banner], master, owned={cat_idx},
+                                 resources={"rare_tickets": 10}, max_solutions=1)
+    sol = result["solutions"][0]
+
+    applied = services.apply_followed_path(db, master, sol, seed_before="s")
+    # 3 distinct units pulled (Cat, Tank Cat, Axe Cat) but only 2 are NEW.
+    assert applied["units_pulled_count"] == 3
+    assert applied["units_added_count"] == 2
+    # History records only the newly-owned units.
+    assert len(db.get_history()[0]["units_added"]) == 2
+
+
 def test_api_smoke(tmp_path, monkeypatch):
     """The FastAPI app boots and basic state/owned endpoints work."""
     monkeypatch.setenv("BCPE_DB", str(tmp_path / "api.sqlite"))

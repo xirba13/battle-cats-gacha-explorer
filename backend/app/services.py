@@ -150,19 +150,25 @@ def apply_followed_path(
     Returns the updated state (owned count, resources, history id).
     """
     region = db.get_region()
+    owned_before = set(db.get_owned(region))
 
     # 1. Mark every pulled unit owned (full draw, not just targets).
-    units_added = []
-    indices_to_own: set[int] = set()
+    pulled_indices: set[int] = set()
+    unmatched: set[str] = set()
     for action in solution_dict.get("actions", []):
         for name in action.get("units_pulled", []):
             unit = master.matcher.match(name)
-            idx = unit["global_index"] if unit else None
-            if idx is not None:
-                indices_to_own.add(idx)
-            units_added.append({"name": name, "global_index": idx,
-                                "master_name": unit["name"] if unit else None})
-    db.set_owned_bulk(indices_to_own, owned=True, region=region)
+            if unit:
+                pulled_indices.add(unit["global_index"])
+            else:
+                unmatched.add(name)
+    db.set_owned_bulk(pulled_indices, owned=True, region=region)
+
+    # Newly-owned units = pulled units that weren't already owned. (Most pulled
+    # cats are commons the player already has; only these are real additions.)
+    newly_indices = sorted(pulled_indices - owned_before)
+    units_added = [{"global_index": i, "name": master.by_index[i]["name"]}
+                   for i in newly_indices]
 
     # 2. Decrement resources by the solution cost (floored at 0).
     resources = db.get_resources()
@@ -181,11 +187,11 @@ def apply_followed_path(
         cost=cost, resources_after=new_resources,
     )
 
-    matcher_unmatched = sorted({u["name"] for u in units_added if u["global_index"] is None})
     return {
         "history_id": hid,
-        "units_added_count": len(indices_to_own),
-        "unmatched_units": matcher_unmatched,
+        "units_added_count": len(newly_indices),    # NEW units only
+        "units_pulled_count": len(pulled_indices),  # distinct units pulled (incl. already owned)
+        "unmatched_units": sorted(unmatched),
         "resources": new_resources,
         "owned_count": len(db.get_owned(region)),
     }
