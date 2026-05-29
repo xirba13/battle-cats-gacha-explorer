@@ -74,3 +74,53 @@ building the Battle Cats Optimal-Pull Path Tracker.
   (`Li'l`→`lil`), `&`→`and`, punctuation collapsed to spaces. Unmatched godfat
   names are logged to `unmatched_names.log` (and returned) for manual
   reconciliation rather than being silently dropped.
+
+## M3/M4 — Persistence, API, UI
+
+- **Owned state keyed by (region, global_index)** so the master list stays
+  region-swappable. Resources/seed/region live in a `settings` k/v table.
+- **Targets are godfat names, not master names.** The pathfinder matches target
+  strings against the unit names in the roll tables (which are godfat's spelling),
+  so `compute_targets` keeps the godfat name as the target and only uses the
+  master match to decide ownership. Unmatched godfat names are treated as
+  candidate targets (can't confirm ownership) and logged.
+- **Banner selection over auto-fetch-all.** godfat pages are very slow (observed
+  ~30–60 s each). Fetching all 30+ upcoming banners per search would take many
+  minutes and hammer godfat. So `/api/events` returns the list cheaply (one
+  cached page) and the UI lets the user pick which banners to actually fetch and
+  search; special banners are pre-selected when the player has the tickets.
+- **Followed-path workflow.** `apply_followed_path` marks *every* unit pulled
+  along the path owned (the full draw, not just targets), decrements resources by
+  the solution cost, clears the now-spent seed, and records history. The UI then
+  discards all displayed paths and prompts for the new seed — mirroring godfat's
+  re-pull-then-re-read-seed loop.
+
+## M5 — Screenshot detection
+
+- **Classify, don't identify.** We never recognise *which* cat is in a cell —
+  `(page, slot)` already determines the unit. We only classify locked vs
+  unlocked, which is robust and resolution-independent.
+- **Grid detection (no hardcoded pixels).** Tiles are low-saturation (white/gray)
+  squares on a high-saturation teal background; we mask `S<70 & V>110`, close the
+  dark cat-art into solid blobs, and take square contours near the median size.
+  Validated on two real screenshots at different resolutions/aspect ratios
+  (1280×720 and 2048×921).
+- **Largest connected grid component.** Detected boxes are connected into
+  row/column neighbours (≈1.6 tile-widths apart, aligned on the other axis); the
+  largest component is the grid. This cleanly drops isolated UI elements (Filter/
+  Select buttons, page arrows, the cat-food icon) that otherwise dragged the grid
+  origin off. (An earlier pitch+phase-fit lattice approach was abandoned because
+  a stray button happened to align to the lattice and inflated the bounds.)
+- **Gap-aware row/column indexing.** Cluster centres along each axis, derive the
+  pitch from the median adjacent gap, and index by `round((centre-first)/pitch)`
+  so a missing interior tile doesn't shift the numbering. Handles partial pages
+  (e.g. Normal = 10 units) naturally — absent tiles are just absent.
+- **Locked vs unlocked.** Sample the cell interior (shrunk to avoid the border):
+  a locked "?" box is near-uniform gray (low brightness std `<42`); unlocked art
+  has high variance. An `empty` class (high saturation *and* very low std) guards
+  the rare lattice-sampling path. Verified: the two "?" tiles in the full-page
+  sample classify as locked; all others unlocked.
+- **Human-in-the-loop.** Detection is an accelerator: results are shown for
+  confirmation and applied to owned-state in bulk, then the user fixes any
+  mistake with one click in the Cat Guide. ~90%+ accuracy on the samples
+  (10/10 and 23/24 tiles, locked tiles correct).
