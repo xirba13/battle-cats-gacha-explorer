@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
+import UnitIcon from "./UnitIcon.jsx";
 
 const RARITY_CLASS = {
   Normal: "r-normal",
@@ -105,7 +106,7 @@ export default function CatGuide({ master, applyOwned, reloadState, setError, pe
                     title={`#${u.global_index} ${u.name} (${u.rarity_guide})`}
                     onClick={() => toggle(u)}
                   >
-                    <img src={u.icon_url} alt={u.name} loading="lazy" />
+                    <UnitIcon unit={u} />
                     <span className="tile-name">{u.name}</span>
                     {pend && <span className="pend-flag">{pend === "unlocked" ? "✓?" : "?"}</span>}
                   </button>

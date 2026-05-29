@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
+import UnitIcon from "./UnitIcon.jsx";
 
 // Section 1: upload Cat Guide screenshots, detect locked/unlocked per slot,
 // and push the results into the Cat Guide (Section 2) for the user to confirm.
@@ -114,7 +115,7 @@ export default function ScreenshotImport({ master, applyOwned, reloadState, goTo
                 className={"ss-cell " + (c.state === "unlocked" ? "u" : "l")}
                 title={`slot ${c.slot}: ${c.name || "?"} — ${c.state}`}
               >
-                {c.icon_url ? <img src={c.icon_url} alt={c.name} loading="lazy" /> : <span>?</span>}
+                {c.icon || c.icon_url ? <UnitIcon unit={c} /> : <span>?</span>}
                 <span className="ss-state">{c.state === "unlocked" ? "✓" : "🔒"}</span>
                 <span className="ss-name">{c.name || `slot ${c.slot}`}</span>
               </div>

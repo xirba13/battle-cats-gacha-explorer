@@ -272,6 +272,7 @@ def detect_screenshot(image_bytes: bytes, master, page_hint: int | None = None) 
             "interior_std": round(cell.interior_std, 2),
             "global_index": unit["global_index"] if unit else None,
             "name": unit["name"] if unit else None,
+            "icon": unit.get("icon") if unit else None,
             "icon_url": unit["icon_url"] if unit else None,
             "rarity": unit["rarity_guide"] if unit else None,
         })

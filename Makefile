@@ -6,7 +6,7 @@ ifeq (,$(wildcard $(PY)))
 PY := backend/.venv/bin/python            # POSIX venv layout
 endif
 
-.PHONY: dev up down install backend frontend test clean
+.PHONY: dev up down install backend frontend test icons clean
 
 ## Run backend + frontend together in containers (recommended, cross-platform)
 dev: up
@@ -31,6 +31,10 @@ backend:
 ## Run the frontend dev server (http://localhost:5173, proxies /api -> :8000)
 frontend:
 	cd frontend && pnpm dev
+
+## Download unit icons locally into frontend/public/icons (offline rendering)
+icons:
+	$(PY) scrapers/download_icons.py
 
 ## Run the backend test suite
 test:

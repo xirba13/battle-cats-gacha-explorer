@@ -87,6 +87,22 @@ and re-simulation of every returned solution), godfat ingestion (offline via a
 mock transport), persistence + the followed-path workflow, the FastAPI surface,
 and screenshot detection against two real screenshots.
 
+## Unit icons (offline rendering)
+
+The Cat Guide tiles render from a locally-served icon set in
+`frontend/public/icons/` (so the app doesn't hit the wiki CDN on every render,
+and works offline). These ~707 icons are **shipped in the repo**. If an icon is
+missing locally the UI automatically falls back to the wiki URL.
+
+Regenerate / refresh them (e.g. after swapping the master list for a new region)
+with:
+
+```bash
+python scrapers/download_icons.py
+# or for another region:
+python scrapers/download_icons.py --master backend/data/cat_guide_master_<region>.json
+```
+
 ## Re-scrapers
 
 - **godfat banners:** `python scrapers/scrape_godfat.py --seed SEED --list`
