@@ -23,6 +23,16 @@ It has four tabs:
    now-invalid paths, and prompts you to re-enter your new seed.
 4. **Instructions** — an in-app usage guide.
 
+## Screenshots
+
+| Screenshot Import | Cat Guide |
+| --- | --- |
+| ![Screenshot import](images/screenshot_import.png) | ![Cat Guide](images/cat_guide.png) |
+| **Cat Guide — search & filters** | **Path Finder — pick banners** |
+| ![Cat Guide filtering](images/cat_guide_filtering.png) | ![Banner selection](images/path_finder_banner_selection.png) |
+| **Path Finder — results** | **After “I followed this path”** |
+| ![Path finder results](images/path_finder_results.png) | ![Pulls saved](images/path_finder_pulls_saved.png) |
+
 ## Prerequisites — read this first
 
 - **You must already be seed-tracking.** This app does **not** derive your seed;
@@ -45,6 +55,28 @@ docker compose up --build
 - Backend API: http://localhost:8000  (docs at `/docs`)
 
 State (SQLite DB, godfat cache, logs) is persisted in `backend/var/`.
+
+## Resetting / deleting your data
+
+All your state — owned units, seed, resources, and followed-path history — lives
+in a single SQLite file at `backend/var/app.sqlite`; cached godfat pages live in
+`backend/var/godfat_cache/`. Both Docker and local runs use this same folder.
+
+To wipe everything and start fresh, stop the app and delete them:
+
+```bash
+rm -f  backend/var/app.sqlite       # owned units / seed / resources / history
+rm -rf backend/var/godfat_cache     # cached godfat pages (optional)
+```
+
+```powershell
+# PowerShell
+Remove-Item backend\var\app.sqlite -Force
+Remove-Item backend\var\godfat_cache -Recurse -Force
+```
+
+The database is recreated empty on the next start. To only clear owned units
+(keeping seed/resources/history), call `POST /api/owned/clear`.
 
 ## Quick start (local, without Docker)
 
@@ -95,7 +127,7 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 ## Tests
 
 ```bash
-cd backend && .venv/Scripts/python.exe -m pytest      # 43 tests
+cd backend && .venv/Scripts/python.exe -m pytest      # 44 tests
 ```
 
 Covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
@@ -147,7 +179,7 @@ backend/
     vision.py       # screenshot grid detection + locked/unlocked classify
     main.py         # FastAPI app
   data/cat_guide_master.json
-  tests/            # 43 tests + fixtures (sample banners + 2 screenshots)
+  tests/            # 44 tests + fixtures (sample banners + 2 screenshots)
 frontend/           # Vite + React (4-tab UI)
   public/icons/     # ~707 unit icons (offline rendering)
   public/top_icons/ # top-bar resource icons
