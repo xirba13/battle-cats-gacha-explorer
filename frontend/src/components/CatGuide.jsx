@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import UnitIcon from "./UnitIcon.jsx";
-import { decodeOwned, encodeOwned } from "../owncode.js";
+import { decodeOwned } from "../owncode.js";
 
 const RARITY_CLASS = {
   Normal: "r-normal",
@@ -11,7 +11,7 @@ const RARITY_CLASS = {
   Legendary: "r-legend",
 };
 
-export default function CatGuide({ master, owned, toggleOwned, replaceOwned, setError }) {
+export default function CatGuide({ master, owned, ownedCode, toggleOwned, replaceOwned, setError }) {
   const [filter, setFilter] = useState("all"); // all | owned | missing
   const [rarity, setRarity] = useState("all");
   const [query, setQuery] = useState("");
@@ -35,7 +35,7 @@ export default function CatGuide({ master, owned, toggleOwned, replaceOwned, set
     [master]
   );
 
-  const code = useMemo(() => encodeOwned(owned), [owned]);
+  const code = ownedCode || "";
 
   if (!master) return <div className="loading">Loading Cat Guide…</div>;
 
@@ -59,10 +59,10 @@ export default function CatGuide({ master, owned, toggleOwned, replaceOwned, set
     }
   };
 
-  const loadCode = () => {
+  const loadCode = async () => {
     const c = pasteVal.trim();
     if (!c) return;
-    const set = decodeOwned(c);
+    const set = await decodeOwned(c);
     replaceOwned(set);
     setPasteVal("");
     setPasteOpen(false);

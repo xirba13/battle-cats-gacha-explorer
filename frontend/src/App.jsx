@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { readStateFromHash, writeStateToHash } from "./owncode.js";
+import { decodeOwned, encodeOwned, readRawState, writeHash } from "./owncode.js";
 import TopBar from "./components/TopBar.jsx";
 import CatGuide from "./components/CatGuide.jsx";
 import PathFinder from "./components/PathFinder.jsx";
@@ -19,20 +19,38 @@ export default function App() {
   const [master, setMaster] = useState(null);
   const [error, setError] = useState(null);
 
-  // All player state lives client-side and is mirrored to the URL hash.
-  const initial = readStateFromHash();
-  const [owned, setOwnedState] = useState(initial.owned);
-  const [seed, setSeed] = useState(initial.seed);
-  const [resources, setResources] = useState(initial.resources);
+  // All player state lives client-side and is mirrored to the URL hash. owned is
+  // an (async-decoded) base64 code; seed + resources parse synchronously.
+  const raw0 = useRef(readRawState()).current;
+  const [owned, setOwnedState] = useState(new Set());
+  const [seed, setSeed] = useState(raw0.seed);
+  const [resources, setResources] = useState(raw0.resources);
+  const [ownedCode, setOwnedCode] = useState(raw0.ownedCode);
+  const ready = useRef(false);
 
   useEffect(() => {
     api.master().then(setMaster).catch((e) => setError(e.message));
   }, []);
 
-  // Mirror state to the URL whenever it changes (the URL is the save file).
+  // Decode the owned set from the URL once on load, then enable URL writing.
   useEffect(() => {
-    writeStateToHash({ owned, seed, resources });
-  }, [owned, seed, resources]);
+    decodeOwned(raw0.ownedCode).then((set) => {
+      setOwnedState(set);
+      ready.current = true;
+    });
+  }, [raw0.ownedCode]);
+
+  // Re-encode owned -> code whenever it changes (after the initial decode).
+  useEffect(() => {
+    if (!ready.current) return;
+    encodeOwned(owned).then(setOwnedCode);
+  }, [owned]);
+
+  // Mirror state to the URL (the URL is the save file).
+  useEffect(() => {
+    if (!ready.current) return;
+    writeHash({ ownedCode, seed, resources });
+  }, [ownedCode, seed, resources]);
 
   const toggleOwned = useCallback((index) => {
     setOwnedState((prev) => {
@@ -86,6 +104,7 @@ export default function App() {
           <CatGuide
             master={master}
             owned={owned}
+            ownedCode={ownedCode}
             toggleOwned={toggleOwned}
             replaceOwned={replaceOwned}
             setError={setError}

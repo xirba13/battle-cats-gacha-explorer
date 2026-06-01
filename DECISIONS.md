@@ -13,13 +13,21 @@ nothing**:
   backend is now a small **stateless** FastAPI service: `search` and `followed`
   take the player's state (owned units, seed, resources) in the request and
   return the new state; nothing is written to disk.
-- **State lives in the URL.** Owned units are encoded as a 730-bit bitmask →
-  version byte + trailing-trimmed bytes → URL-safe base64 (`frontend/src/
-  owncode.js`); seed and resources ride along in the URL hash
-  (`#o=<code>&s=<seed>&r=a.b.c.d`). The URL *is* the save file — copy-link /
-  copy-code / load-code in the Cat Guide. Codes are positional by `global_index`,
-  so appending new units to the master list keeps old codes valid; a version byte
-  guards against a future reordering.
+- **State lives in the URL.** Owned units are a bitmask (1 bit per
+  `global_index`), stored as `[format byte][payload]` → URL-safe base64
+  (`frontend/src/owncode.js`). We keep whichever payload is smaller: `0x01` raw
+  (trailing-trimmed) or `0x02` raw-deflate via the browser-native
+  `CompressionStream` (no dependency; async). Real collections are highly
+  structured (you own all the commons — long runs of 1s), so deflate typically
+  ~halves the code and a complete dex is ~11 chars; pick-smaller means it's never
+  worse than the ~124-char raw. Seed and resources ride along uncompressed in the
+  hash (`#o=<code>&s=<seed>&r=a.b.c.d`). The URL *is* the save file (copy-link /
+  copy-code / load-code).
+- **Scalable by design.** Nothing hardcodes the unit count: the bitmask spans
+  only up to the highest owned index and decode reads whatever bits are present,
+  so appending new units to the master list (higher indices) keeps old codes
+  valid — new units just read as not-owned. The format byte leaves room for
+  future encodings without breaking old links.
 - **godfat cache is in-memory.** `GodfatClient(cache_dir=None)` uses a size-capped
   RAM LRU instead of disk, so the server is fully stateless. It's server-side, so
   it never affects client performance; it persists for the server's lifetime.

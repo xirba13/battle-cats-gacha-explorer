@@ -1,8 +1,21 @@
 // Encode/decode the player's owned-units set into a compact, URL-safe code, and
-// (de)serialize the whole client state (owned + seed + resources) to the URL
-// hash. Nothing is stored on a server — the URL *is* the save file.
+// (de)serialize the rest of the client state (seed + resources) to the URL hash.
+// Nothing is stored on a server — the URL *is* the save file.
+//
+// The owned set is a bitmask (1 bit per global_index). We store whichever is
+// smaller, behind a 1-byte format tag:
+//   0x01  raw bitmask          (trailing zero bytes trimmed)
+//   0x02  raw-deflate bitmask  (CompressionStream; great on real collections)
+// then base64url. Picking the smaller means it's never worse than raw.
+//
+// Scalability: nothing here hardcodes the unit count. The bitmask only spans up
+// to the highest owned index (trailing-trimmed) and decode reads whatever bits
+// are present, so as new units are appended to the master list (higher indices)
+// existing codes stay valid — new units simply read as not-owned. The format
+// byte leaves room for future schemes without breaking old links.
 
-const VERSION = 1;
+const FMT_RAW = 0x01;
+const FMT_DEFLATE = 0x02;
 
 function bytesToBase64url(bytes) {
   let bin = "";
@@ -19,20 +32,55 @@ function base64urlToBytes(s) {
   return bytes;
 }
 
-// Owned set (of global_index numbers) <-> code string.
-export function encodeOwned(ownedSet) {
-  if (!ownedSet || ownedSet.size === 0) return "";
+function bitmaskBytes(set) {
   let max = 0;
-  for (const idx of ownedSet) if (idx > max) max = idx;
-  const bits = new Uint8Array(Math.floor(max / 8) + 1);
-  for (const idx of ownedSet) bits[idx >> 3] |= 1 << (idx & 7);
-  const out = new Uint8Array(bits.length + 1);
-  out[0] = VERSION;
-  out.set(bits, 1);
-  return bytesToBase64url(out);
+  for (const i of set) if (i > max) max = i;
+  const ba = new Uint8Array((max >> 3) + 1);
+  for (const i of set) ba[i >> 3] |= 1 << (i & 7);
+  return ba;
 }
 
-export function decodeOwned(code) {
+function withTag(tag, bytes) {
+  const out = new Uint8Array(bytes.length + 1);
+  out[0] = tag;
+  out.set(bytes, 1);
+  return out;
+}
+
+async function deflateRaw(bytes) {
+  const cs = new CompressionStream("deflate-raw");
+  const writer = cs.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+
+async function inflateRaw(bytes) {
+  const ds = new DecompressionStream("deflate-raw");
+  const writer = ds.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+}
+
+// Owned set (of global_index numbers) -> code string (async: may compress).
+export async function encodeOwned(ownedSet) {
+  if (!ownedSet || ownedSet.size === 0) return "";
+  const bits = bitmaskBytes(ownedSet);
+  let best = withTag(FMT_RAW, bits);
+  if (typeof CompressionStream !== "undefined") {
+    try {
+      const deflated = await deflateRaw(bits);
+      if (deflated.length + 1 < best.length) best = withTag(FMT_DEFLATE, deflated);
+    } catch {
+      /* fall back to raw */
+    }
+  }
+  return bytesToBase64url(best);
+}
+
+// Code string -> owned set (async: may decompress).
+export async function decodeOwned(code) {
   const set = new Set();
   if (!code) return set;
   let bytes;
@@ -42,16 +90,26 @@ export function decodeOwned(code) {
     return set;
   }
   if (bytes.length === 0) return set;
-  // bytes[0] is the version; the rest is the bitmask.
-  for (let i = 1; i < bytes.length; i++) {
-    const b = bytes[i];
-    for (let bit = 0; bit < 8; bit++) {
-      if (b & (1 << bit)) set.add((i - 1) * 8 + bit);
+  const fmt = bytes[0];
+  let bits = bytes.subarray(1);
+  if (fmt === FMT_DEFLATE) {
+    if (typeof DecompressionStream === "undefined") return set;
+    try {
+      bits = await inflateRaw(bits);
+    } catch {
+      return set;
     }
+  } else if (fmt !== FMT_RAW) {
+    return set; // unknown/future format
+  }
+  for (let i = 0; i < bits.length; i++) {
+    const b = bits[i];
+    for (let bit = 0; bit < 8; bit++) if (b & (1 << bit)) set.add(i * 8 + bit);
   }
   return set;
 }
 
+// ---- seed + resources (small, kept uncompressed) ------------------------- //
 const RES_KEYS = ["rare_tickets", "cat_food", "platinum_tickets", "legend_tickets"];
 
 function encodeResources(r) {
@@ -69,25 +127,25 @@ function decodeResources(s) {
   return out;
 }
 
-// Whole-state <-> URL hash (#o=<code>&s=<seed>&r=a.b.c.d).
-export function readStateFromHash() {
+// Synchronous read of the hash: owned stays a code string (decode it with
+// decodeOwned), seed + resources are parsed directly.
+export function readRawState() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return {
-    owned: decodeOwned(p.get("o") || ""),
+    ownedCode: p.get("o") || "",
     seed: p.get("s") || "",
     resources: decodeResources(p.get("r")),
   };
 }
 
-export function buildHash({ owned, seed, resources }) {
+export function buildHash({ ownedCode, seed, resources }) {
   const p = new URLSearchParams();
-  const code = encodeOwned(owned);
-  if (code) p.set("o", code);
+  if (ownedCode) p.set("o", ownedCode);
   if (seed) p.set("s", seed);
   p.set("r", encodeResources(resources));
   return "#" + p.toString();
 }
 
-export function writeStateToHash(state) {
+export function writeHash(state) {
   history.replaceState(null, "", buildHash(state));
 }
