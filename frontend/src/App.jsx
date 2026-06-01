@@ -1,62 +1,69 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
+import { readStateFromHash, writeStateToHash } from "./owncode.js";
 import TopBar from "./components/TopBar.jsx";
 import CatGuide from "./components/CatGuide.jsx";
 import PathFinder from "./components/PathFinder.jsx";
-import ScreenshotImport from "./components/ScreenshotImport.jsx";
 import Instructions from "./components/Instructions.jsx";
 
 const TABS = [
-  { id: "screenshot", label: "1 · Screenshot Import" },
-  { id: "guide", label: "2 · Cat Guide" },
-  { id: "paths", label: "3 · Path Finder" },
-  { id: "help", label: "4 · Instructions" },
+  { id: "guide", label: "1 · Cat Guide" },
+  { id: "paths", label: "2 · Path Finder" },
+  { id: "help", label: "3 · Instructions" },
 ];
+
+const REGION = "BCEN (English)";
 
 export default function App() {
   const [tab, setTab] = useState("guide");
-  const [state, setState] = useState(null);
   const [master, setMaster] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadState = useCallback(async () => {
-    try {
-      setState(await api.state());
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
-
-  const loadMaster = useCallback(async () => {
-    try {
-      setMaster(await api.master());
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
+  // All player state lives client-side and is mirrored to the URL hash.
+  const initial = readStateFromHash();
+  const [owned, setOwnedState] = useState(initial.owned);
+  const [seed, setSeed] = useState(initial.seed);
+  const [resources, setResources] = useState(initial.resources);
 
   useEffect(() => {
-    loadState();
-    loadMaster();
-  }, [loadState, loadMaster]);
+    api.master().then(setMaster).catch((e) => setError(e.message));
+  }, []);
 
-  // Optimistically update owned flags in the loaded master without a full reload.
-  const applyOwned = useCallback((indices, owned) => {
-    setMaster((m) => {
-      if (!m) return m;
-      const set = new Set(indices);
-      return {
-        ...m,
-        units: m.units.map((u) =>
-          set.has(u.global_index) ? { ...u, owned } : u
-        ),
-      };
+  // Mirror state to the URL whenever it changes (the URL is the save file).
+  useEffect(() => {
+    writeStateToHash({ owned, seed, resources });
+  }, [owned, seed, resources]);
+
+  const toggleOwned = useCallback((index) => {
+    setOwnedState((prev) => {
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
     });
   }, []);
 
+  // Add/remove many at once (screenshot is gone, but path-follow + paste use this).
+  const applyOwned = useCallback((indices, isOwned) => {
+    setOwnedState((prev) => {
+      const next = new Set(prev);
+      for (const i of indices) (isOwned ? next.add(i) : next.delete(i));
+      return next;
+    });
+  }, []);
+
+  const replaceOwned = useCallback((set) => setOwnedState(new Set(set)), []);
+
   return (
     <div className="app">
-      <TopBar state={state} reloadState={loadState} setError={setError} />
+      <TopBar
+        region={REGION}
+        seed={seed}
+        setSeed={setSeed}
+        resources={resources}
+        setResources={setResources}
+        ownedCount={owned.size}
+        disclaimer={master?.disclaimer}
+      />
       {error && (
         <div className="error-bar" onClick={() => setError(null)}>
           ⚠️ {error} (click to dismiss)
@@ -75,34 +82,29 @@ export default function App() {
       </nav>
 
       <main className="content">
-        {tab === "screenshot" && (
-          <ScreenshotImport
-            master={master}
-            applyOwned={applyOwned}
-            reloadState={loadState}
-            goToGuide={() => setTab("guide")}
-            setError={setError}
-          />
-        )}
         {tab === "guide" && (
           <CatGuide
             master={master}
-            reloadMaster={loadMaster}
-            applyOwned={applyOwned}
-            reloadState={loadState}
+            owned={owned}
+            toggleOwned={toggleOwned}
+            replaceOwned={replaceOwned}
             setError={setError}
           />
         )}
         {tab === "paths" && (
           <PathFinder
-            state={state}
             master={master}
+            owned={owned}
+            seed={seed}
+            setSeed={setSeed}
+            resources={resources}
+            setResources={setResources}
             applyOwned={applyOwned}
-            reloadState={loadState}
+            replaceOwned={replaceOwned}
             setError={setError}
           />
         )}
-        {tab === "help" && <Instructions disclaimer={state?.disclaimer} />}
+        {tab === "help" && <Instructions disclaimer={master?.disclaimer} />}
       </main>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 
 const TYPE_BADGE = {
@@ -21,7 +21,9 @@ function CostLine({ cost }) {
   return <span>{parts.length ? parts.join("  +  ") : "free"}</span>;
 }
 
-export default function PathFinder({ state, master, applyOwned, reloadState, setError }) {
+export default function PathFinder({
+  master, owned, seed, setSeed, resources, setResources, applyOwned, replaceOwned, setError,
+}) {
   const [events, setEvents] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [count, setCount] = useState(100);
@@ -29,31 +31,15 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
   const [followMsg, setFollowMsg] = useState(null);
   const [lastSig, setLastSig] = useState(null);
   const resultsRef = useRef(null);
 
-  const seed = state?.seed;
-
-  // A signature of the current search inputs; used to disable the button while
-  // the displayed results are still up to date, and re-enable it on any change.
   const searchSig = useMemo(
-    () => JSON.stringify({ seed, count, wishlist: wishlist.trim(), ids: [...selected].sort() }),
-    [seed, count, wishlist, selected]
+    () => JSON.stringify({ seed, count, wishlist: wishlist.trim(), ids: [...selected].sort(), owned: owned.size }),
+    [seed, count, wishlist, selected, owned]
   );
   const upToDate = result && lastSig === searchSig;
-
-  const loadHistory = async () => {
-    try {
-      setHistory((await api.history()).history);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-  useEffect(() => {
-    loadHistory();
-  }, []);
 
   const fetchEvents = async () => {
     if (!seed) {
@@ -65,13 +51,10 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
     try {
       const data = await api.events(seed, count);
       setEvents(data.events);
-      // Pre-select special banners if the player has the tickets.
       const pre = new Set();
       for (const ev of data.events) {
-        if (ev.banner_type === "platinum" && state.resources.platinum_tickets > 0)
-          pre.add(ev.event_id);
-        if (ev.banner_type === "legend" && state.resources.legend_tickets > 0)
-          pre.add(ev.event_id);
+        if (ev.banner_type === "platinum" && resources.platinum_tickets > 0) pre.add(ev.event_id);
+        if (ev.banner_type === "legend" && resources.legend_tickets > 0) pre.add(ev.event_id);
       }
       setSelected(pre);
     } catch (e) {
@@ -102,13 +85,12 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
         seed,
         event_ids: [...selected],
         count,
-        wishlist: wishlist.trim()
-          ? wishlist.split(",").map((s) => s.trim()).filter(Boolean)
-          : null,
+        resources,
+        owned: [...owned],
+        wishlist: wishlist.trim() ? wishlist.split(",").map((s) => s.trim()).filter(Boolean) : null,
       };
       setResult(await api.search(payload));
       setLastSig(searchSig);
-      // Bring the freshly-computed paths into view.
       requestAnimationFrame(() =>
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
       );
@@ -123,27 +105,24 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
     if (
       !window.confirm(
         "Mark every unit pulled along this path as owned, decrement your resources, " +
-          "and discard the other paths? Do this only after you have actually pulled in-game."
+          "and fill in your new seed? Do this only after you have actually pulled in-game."
       )
     )
       return;
     try {
-      const res = await api.followed(sol, seed);
-      // Mark all pulled units owned in the local master view.
-      const idx = (sol.units_pulled_all || [])
-        .map((u) => u.global_index)
-        .filter((i) => i != null);
-      applyOwned(idx, true);
-      // Discard all displayed paths — they are based on the now-spent seed.
+      const res = await api.followed(sol, [...owned], resources);
+      replaceOwned(new Set(res.owned));
+      if (res.resources) setResources(res.resources);
+      setSeed(res.new_seed || "");
       setResult(null);
       setEvents(null);
       setSelected(new Set());
-      await reloadState();
-      await loadHistory();
-      let msg = res.prompt +
-        ` (+${res.units_added_count} new unit${res.units_added_count === 1 ? "" : "s"} owned)`;
+      let msg = res.new_seed
+        ? `New seed filled in automatically: ${res.new_seed} — verify on godfat, then search again.`
+        : "Path recorded.";
+      msg += ` (+${res.units_added_count} new unit${res.units_added_count === 1 ? "" : "s"} owned)`;
       if (res.unmatched_units?.length)
-        msg += ` · ${res.unmatched_units.length} unit(s) not in master, see log`;
+        msg += ` · ${res.unmatched_units.length} unit(s) not in master`;
       setFollowMsg(msg);
     } catch (e) {
       setError(e.message);
@@ -158,18 +137,13 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
         </div>
         <label>
           Depth (count)
-          <input
-            type="number"
-            min="20"
-            max="1000"
-            value={count}
-            onChange={(e) => setCount(Number(e.target.value))}
-          />
+          <input type="number" min="20" max="1000" value={count}
+            onChange={(e) => setCount(Number(e.target.value))} />
         </label>
         <button disabled={!seed || loadingEvents} onClick={fetchEvents}>
           {loadingEvents ? "Fetching…" : "1 · Fetch Upcoming banners"}
         </button>
-        <span className="muted small">godfat pages might be slow — results are cached per seed.</span>
+        <span className="muted small">godfat pages can be slow — results are cached per seed.</span>
       </div>
 
       {followMsg && <div className="follow-msg">✅ {followMsg}</div>}
@@ -178,7 +152,7 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
         <div className="pf-banners">
           <h4>2 · Pick banners to search ({selected.size} selected)</h4>
           <p className="muted small">
-            Each selected banner is fetched from godfat (slow). Special banners are
+            Each selected banner is fetched from godfat. Special banners are
             pre-selected when you have the matching tickets.
           </p>
           <div className="banner-list">
@@ -186,15 +160,9 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
               const badge = TYPE_BADGE[ev.banner_type] || TYPE_BADGE.normal;
               return (
                 <label key={ev.event_id} className="banner-row">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(ev.event_id)}
-                    onChange={() => toggleSel(ev.event_id)}
-                  />
+                  <input type="checkbox" checked={selected.has(ev.event_id)} onChange={() => toggleSel(ev.event_id)} />
                   <span className={`badge ${badge.cls}`}>{badge.label}</span>
-                  <span className="banner-dates muted small">
-                    {ev.date_start} → {ev.date_end}
-                  </span>
+                  <span className="banner-dates muted small">{ev.date_start} → {ev.date_end}</span>
                   <span className="banner-desc">{ev.description}</span>
                 </label>
               );
@@ -203,11 +171,8 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
           <div className="pf-run">
             <label>
               Wishlist (optional, comma-separated unit names)
-              <input
-                value={wishlist}
-                placeholder="e.g. Balrog Cat, Vega Cat"
-                onChange={(e) => setWishlist(e.target.value)}
-              />
+              <input value={wishlist} placeholder="e.g. Balrog Cat, Vega Cat"
+                onChange={(e) => setWishlist(e.target.value)} />
             </label>
             <button className="primary" disabled={searching || upToDate} onClick={runSearch}>
               {searching
@@ -222,16 +187,11 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
 
       {searching && (
         <div className="loading">
-          Fetching banners and computing paths… this can take a
-          while if godfat is saturated.
+          Fetching banners and computing paths… this can take a while on slow godfat days.
         </div>
       )}
 
-      <div ref={resultsRef}>
-        {result && <Results result={result} onFollow={followPath} />}
-      </div>
-
-      <History history={history} />
+      <div ref={resultsRef}>{result && <Results result={result} onFollow={followPath} />}</div>
     </div>
   );
 }
@@ -246,8 +206,7 @@ function Results({ result, onFollow }) {
     return (
       <div className="results">
         <p className="muted">
-          No not-yet-owned target units found in the selected banners. (All units
-          in these banners are already marked owned.)
+          No not-yet-owned target units found in the selected banners.
         </p>
       </div>
     );
@@ -262,8 +221,7 @@ function Results({ result, onFollow }) {
       </p>
       {result.unmatched?.length > 0 && (
         <p className="warn small">
-          ⚠️ {result.unmatched.length} godfat name(s) had no master match (logged):{" "}
-          {result.unmatched.join(", ")}
+          ⚠️ {result.unmatched.length} godfat name(s) had no master match: {result.unmatched.join(", ")}
         </p>
       )}
       {result.solutions.length === 0 && (
@@ -276,9 +234,7 @@ function Results({ result, onFollow }) {
             <span className="sol-collected">
               🎯 {sol.collected_count} target(s): {sol.collected_units.join(", ")}
             </span>
-            <span className="sol-cost">
-              Cost: <CostLine cost={sol.cost} />
-            </span>
+            <span className="sol-cost">Cost: <CostLine cost={sol.cost} /></span>
             <span className={sol.verified ? "verified" : "unverified"}>
               {sol.verified ? "✓ verified" : "✗ UNVERIFIED"}
             </span>
@@ -293,9 +249,7 @@ function Results({ result, onFollow }) {
                 <span className="banner-ref" title={bannerName(a.banner_index)}>
                   {bannerName(a.banner_index)}
                 </span>{" "}
-                ({a.position_from}
-                {" → "}
-                {a.position_to})
+                ({a.position_from} → {a.position_to})
                 {a.units_pulled.length > 1 ? (
                   <span className="draw"> — {a.units_pulled.join(", ")}</span>
                 ) : (
@@ -307,7 +261,10 @@ function Results({ result, onFollow }) {
               </li>
             ))}
           </ol>
-          <div className="muted small">Final seed position: {sol.final_position}</div>
+          <div className="muted small">
+            Final seed position: {sol.final_position}
+            {sol.final_seed && <> · resulting seed: <b>{sol.final_seed}</b></>}
+          </div>
         </div>
       ))}
     </div>
@@ -327,35 +284,4 @@ function actionLabel(a) {
     default:
       return a.payment === "cat_food" ? "Single pull (food)" : "Single pull (ticket)";
   }
-}
-
-function History({ history }) {
-  if (!history?.length) return null;
-  return (
-    <div className="history">
-      <h4>History</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Seed (before)</th>
-            <th>Units added</th>
-            <th>Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          {history.map((h) => (
-            <tr key={h.id}>
-              <td>{new Date(h.ts * 1000).toLocaleString()}</td>
-              <td>{h.seed_before || "—"}</td>
-              <td>{h.units_added.length}</td>
-              <td>
-                <CostLine cost={h.cost} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }

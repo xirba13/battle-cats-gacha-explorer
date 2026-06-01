@@ -1,7 +1,8 @@
-"""Service layer: ties godfat ingestion + name matching + pathfinder + DB.
+"""Service layer: ties godfat ingestion + name matching + pathfinder together.
 
-Pure-ish functions so they can be unit-tested without a live network (pass in
-already-built banners or a mock GodfatClient).
+Stateless and pure-ish: state (owned units, resources, seed) is passed in by the
+caller and returned out; nothing is persisted. Functions can be unit-tested
+without a live network (pass in already-built banners or a mock GodfatClient).
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import pathfinder
-from .db import Database
 from .master import MasterData
 
 
@@ -138,21 +138,21 @@ def _annotate_units(godfat_names: list[str], master: MasterData) -> list[dict]:
     return out
 
 
-def apply_followed_path(
-    db: Database,
+def followed_result(
     master: MasterData,
     solution_dict: dict,
-    seed_before: Optional[str],
+    owned: set[int],
+    resources: Optional[dict] = None,
 ) -> dict:
-    """Mark every unit pulled along the path as owned, decrement resources, and
-    record a history entry. The caller then prompts for the new seed.
-
-    Returns the updated state (owned count, resources, history id).
+    """Stateless "I followed this path": given the current owned-set, compute the
+    new owned-set (every unit pulled marked owned), the new seed (from the last
+    action's godfat link), the resources after spending the path's cost, and how
+    many units are genuinely new. Persists nothing — the caller (client) holds
+    the state.
     """
-    region = db.get_region()
-    owned_before = set(db.get_owned(region))
+    owned = set(owned)
 
-    # 1. Mark every pulled unit owned (full draw, not just targets).
+    # Every pulled unit (full draw, not just targets) becomes owned.
     pulled_indices: set[int] = set()
     unmatched: set[str] = set()
     for action in solution_dict.get("actions", []):
@@ -162,36 +162,25 @@ def apply_followed_path(
                 pulled_indices.add(unit["global_index"])
             else:
                 unmatched.add(name)
-    db.set_owned_bulk(pulled_indices, owned=True, region=region)
 
-    # Newly-owned units = pulled units that weren't already owned. (Most pulled
-    # cats are commons the player already has; only these are real additions.)
-    newly_indices = sorted(pulled_indices - owned_before)
-    units_added = [{"global_index": i, "name": master.by_index[i]["name"]}
-                   for i in newly_indices]
+    newly_indices = sorted(pulled_indices - owned)   # real additions only
+    new_owned = sorted(owned | pulled_indices)
 
-    # 2. Decrement resources by the solution cost (floored at 0).
-    resources = db.get_resources()
-    cost = solution_dict.get("cost", {})
-    new_resources = {k: max(0, resources.get(k, 0) - int(cost.get(k, 0)))
-                     for k in resources}
-    new_resources = db.set_resources(new_resources)
-
-    # 3. The old seed is now spent; clear it until the player re-enters one.
-    db.set_seed(None)
-
-    # 4. History.
-    hid = db.add_history(
-        region=region, seed_before=seed_before, seed_after=None,
-        solution=solution_dict, units_added=units_added,
-        cost=cost, resources_after=new_resources,
-    )
+    # Resources after spending the path's cost (floored at 0).
+    new_resources = None
+    if resources is not None:
+        resources = pathfinder.normalize_resources(resources)
+        cost = solution_dict.get("cost", {})
+        new_resources = {k: max(0, resources.get(k, 0) - int(cost.get(k, 0)))
+                         for k in pathfinder.RESOURCE_KEYS}
 
     return {
-        "history_id": hid,
-        "units_added_count": len(newly_indices),    # NEW units only
-        "units_pulled_count": len(pulled_indices),  # distinct units pulled (incl. already owned)
+        "owned": new_owned,
+        "new_seed": solution_dict.get("final_seed"),
+        "units_added_count": len(newly_indices),
+        "units_pulled_count": len(pulled_indices),
+        "units_added": [{"global_index": i, "name": master.by_index[i]["name"]}
+                        for i in newly_indices],
         "unmatched_units": sorted(unmatched),
         "resources": new_resources,
-        "owned_count": len(db.get_owned(region)),
     }

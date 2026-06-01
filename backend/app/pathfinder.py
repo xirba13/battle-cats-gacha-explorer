@@ -120,6 +120,7 @@ class Action:
     units_pulled: list[str]
     targets_hit: list[str]
     cost: dict = field(default_factory=empty_resources)
+    result_seed: Optional[str] = None  # seed after this action (from godfat)
 
     def to_dict(self) -> dict:
         return {
@@ -131,6 +132,7 @@ class Action:
             "units_pulled": list(self.units_pulled),
             "targets_hit": list(self.targets_hit),
             "cost": dict(self.cost),
+            "result_seed": self.result_seed,
         }
 
 
@@ -141,6 +143,7 @@ class Solution:
     final_position: str
     collected_count: int
     collected_units: list[str]
+    final_seed: Optional[str] = None  # seed after the last action (auto-fill next search)
 
     def to_dict(self) -> dict:
         return {
@@ -149,6 +152,7 @@ class Solution:
             "final_position": self.final_position,
             "collected_count": self.collected_count,
             "collected_units": list(self.collected_units),
+            "final_seed": self.final_seed,
         }
 
 
@@ -160,7 +164,10 @@ _CELL_RE = re.compile(
     r'<td[^>]*onclick="pick\(\'([0-9]+)([AB])(R?)(G?)X?\'\)"[^>]*>(.*?)</td>',
     re.DOTALL,
 )
-_NAME_RE = re.compile(r">([^<]+)</a>")
+# First anchor in a cell is the unit's name link; its href carries the *resulting
+# seed* after taking that pull (godfat encodes the next seed there).
+_NAME_RE = re.compile(r'<a\s+href="([^"]*)"[^>]*>([^<]+)</a>')
+_SEED_RE = re.compile(r"seed=(\d+)")
 _NEXT_POS_RE = re.compile(r"(?:<-|->)\s*(\d+[AB])")
 
 
@@ -183,9 +190,11 @@ def parse_tables(html_content: str) -> list[dict]:
             cell_text = html.unescape(cell_html)
 
             name_match = _NAME_RE.search(cell_text)
-            unit_name = name_match.group(1).strip() if name_match else None
+            unit_name = name_match.group(2).strip() if name_match else None
             if not unit_name:
                 continue
+            seed_match = _SEED_RE.search(name_match.group(1))
+            result_seed = seed_match.group(1) if seed_match else None
 
             next_pos_match = _NEXT_POS_RE.search(cell_text)
             next_pos = next_pos_match.group(1) if next_pos_match else None
@@ -195,15 +204,19 @@ def parse_tables(html_content: str) -> list[dict]:
                 if is_alt == "R":
                     entry["alt_guaranteed_unit"] = unit_name
                     entry["alt_guaranteed_next"] = next_pos
+                    entry["alt_guaranteed_seed"] = result_seed
                 else:
                     entry["guaranteed_unit"] = unit_name
                     entry["guaranteed_next"] = next_pos
+                    entry["guaranteed_seed"] = result_seed
             else:
                 if is_alt == "R":
                     entry["alt_unit"] = unit_name
                     entry["alt_next"] = next_pos
+                    entry["alt_seed"] = result_seed
                 else:
                     entry["unit"] = unit_name
+                    entry["unit_seed"] = result_seed
 
         if banner_data:
             banners.append(banner_data)
@@ -220,13 +233,14 @@ def parse_data(filename: str) -> list[dict]:
 def get_next_pos_normal(current_pos, normal_unit_hint, banner_data, last_unit_name):
     """Resolve a single pull at `current_pos` on a roll table.
 
-    Returns (unit_got, next_pos, note). Handles duplicate-rare track switching:
-    if the unit we would normally get equals the last unit pulled and an
-    alternate track exists, we take the alternate unit/next position.
+    Returns (unit_got, next_pos, note, result_seed). Handles duplicate-rare track
+    switching: if the unit we would normally get equals the last unit pulled and
+    an alternate track exists, we take the alternate unit/next position.
+    `result_seed` is the seed *after* this pull (from godfat's name link).
     """
     entry = banner_data.get(current_pos)
     if not entry:
-        return None, None, None
+        return None, None, None, None
 
     num = int(current_pos[:-1])
     track = current_pos[-1]
@@ -235,9 +249,9 @@ def get_next_pos_normal(current_pos, normal_unit_hint, banner_data, last_unit_na
     if last_unit_name and normal_unit == last_unit_name and "alt_unit" in entry:
         actual_unit = entry["alt_unit"]
         next_p = entry.get("alt_next")
-        return actual_unit, next_p, "Duplicate"
+        return actual_unit, next_p, "Duplicate", entry.get("alt_seed")
 
-    return normal_unit, f"{num + 1}{track}", "Normal"
+    return normal_unit, f"{num + 1}{track}", "Normal", entry.get("unit_seed")
 
 
 # --------------------------------------------------------------------------- #
@@ -468,7 +482,7 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_b
     new_usage = _bump_usage(usage, b_idx)
 
     # --- single pull: rare tickets first, then cat food --------------------
-    unit, next_p, _note = get_next_pos_normal(pos, entry.get("unit"), banner.rolls, last_unit)
+    unit, next_p, _note, seed = get_next_pos_normal(pos, entry.get("unit"), banner.rolls, last_unit)
     if unit and next_p:
         new_collected, is_target = _apply_unit(unit, collected, target_to_id)
         targets_hit = [unit] if is_target else []
@@ -485,7 +499,8 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_b
             cost = {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_PULL,
                     "platinum_tickets": 0, "legend_tickets": 0}
         if within_caps(res_s):
-            act = Action(b_idx, ACTION_SINGLE, payment, pos, next_p, [unit], targets_hit, cost)
+            act = Action(b_idx, ACTION_SINGLE, payment, pos, next_p, [unit], targets_hit,
+                         cost, result_seed=seed)
             _try_push(pq, counter, visited, visited_key, next_p, new_collected,
                       unit, new_usage, res_s, act, path)
 
@@ -502,20 +517,22 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_b
                 act = Action(b_idx, ACTION_GUARANTEED_11, PAY_CAT_FOOD, pos, g_next,
                              units, targets_hit,
                              {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_11_DRAW,
-                              "platinum_tickets": 0, "legend_tickets": 0})
+                              "platinum_tickets": 0, "legend_tickets": 0},
+                             result_seed=entry.get("guaranteed_seed"))
                 _try_push(pq, counter, visited, visited_key, g_next, new_collected,
                           g_unit, new_usage, res_11, act, path)
     else:
         # Non-guaranteed banner (guaranteed columns empty): a plain 11-roll is
         # just 11 consecutive normal pulls for the same 1500 cat food.
         if within_caps(res_11):
-            units, targets_hit, new_collected, next_11, ok = _simulate_11_normal(
+            units, targets_hit, new_collected, next_11, seed_11, ok = _simulate_11_normal(
                 pos, last_unit, banner.rolls, collected, target_to_id)
             if ok:
                 act = Action(b_idx, ACTION_MULTI_11, PAY_CAT_FOOD, pos, next_11,
                              units, targets_hit,
                              {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_11_DRAW,
-                              "platinum_tickets": 0, "legend_tickets": 0})
+                              "platinum_tickets": 0, "legend_tickets": 0},
+                             result_seed=seed_11)
                 _try_push(pq, counter, visited, visited_key, next_11, new_collected,
                           units[-1], new_usage, res_11, act, path)
 
@@ -526,7 +543,7 @@ def _simulate_11(pos, last_unit, rolls, guaranteed_unit, collected, target_to_id
     targets_hit: list[str] = []
     temp_pos, temp_last, temp_collected = pos, last_unit, collected
     for _ in range(10):
-        u, np, _ = get_next_pos_normal(temp_pos, None, rolls, temp_last)
+        u, np, _, _s = get_next_pos_normal(temp_pos, None, rolls, temp_last)
         if not u or not np:
             return units, targets_hit, collected, False
         temp_collected, is_t = _apply_unit(u, temp_collected, target_to_id)
@@ -543,27 +560,29 @@ def _simulate_11(pos, last_unit, rolls, guaranteed_unit, collected, target_to_id
 
 def _simulate_11_normal(pos, last_unit, rolls, collected, target_to_id):
     """Simulate a plain 11-roll: 11 consecutive normal pulls on a non-guaranteed
-    banner. Returns (units[11], targets_hit, new_collected, final_next_pos, ok)."""
+    banner. Returns (units[11], targets_hit, new_collected, final_next_pos,
+    final_seed, ok)."""
     units: list[str] = []
     targets_hit: list[str] = []
     temp_pos, temp_last, temp_collected = pos, last_unit, collected
+    last_seed = None
     for _ in range(11):
-        u, np, _ = get_next_pos_normal(temp_pos, None, rolls, temp_last)
+        u, np, _, s = get_next_pos_normal(temp_pos, None, rolls, temp_last)
         if not u or not np:
-            return units, targets_hit, collected, None, False
+            return units, targets_hit, collected, None, None, False
         temp_collected, is_t = _apply_unit(u, temp_collected, target_to_id)
         if is_t:
             targets_hit.append(u)
         units.append(u)
-        temp_pos, temp_last = np, u
-    return units, targets_hit, temp_collected, temp_pos, True
+        temp_pos, temp_last, last_seed = np, u, s
+    return units, targets_hit, temp_collected, temp_pos, last_seed, True
 
 
 def _expand_special(pq, counter, visited, visited_key, within_caps, b_idx, banner,
                     entry, pos, collected, last_unit, usage, res, path, target_to_id):
     """Platinum/Legend Capsules: single guaranteed pulls, ticket-only, no 11-draw."""
     rt, cf, pt, lt = res
-    unit, next_p, _note = get_next_pos_normal(pos, entry.get("unit"), banner.rolls, last_unit)
+    unit, next_p, _note, seed = get_next_pos_normal(pos, entry.get("unit"), banner.rolls, last_unit)
     if not unit or not next_p:
         return
     new_collected, is_target = _apply_unit(unit, collected, target_to_id)
@@ -581,7 +600,8 @@ def _expand_special(pq, counter, visited, visited_key, within_caps, b_idx, banne
 
     if not within_caps(new_res):
         return
-    act = Action(b_idx, action_type, payment, pos, next_p, [unit], targets_hit, cost)
+    act = Action(b_idx, action_type, payment, pos, next_p, [unit], targets_hit, cost,
+                 result_seed=seed)
     _try_push(pq, counter, visited, visited_key, next_p, new_collected,
               unit, new_usage, new_res, act, path)
 
@@ -617,6 +637,7 @@ def _build_solutions(banners, raw_solutions, target_list) -> list[Solution]:
             final_position=final_position,
             collected_count=bin(collected).count("1"),
             collected_units=collected_units,
+            final_seed=actions[-1].result_seed,
         ))
     # Most collected first, then cheapest by scalarised cost.
     out.sort(key=lambda s: (-s.collected_count,
@@ -673,7 +694,7 @@ def verify_solution(banners, solution: Solution) -> tuple[bool, list[str]]:
                 return False, errors
             pos, last_unit = g_next, g_unit
         elif act.action_type == ACTION_MULTI_11:
-            units, _hits, _c, next_11, ok = _simulate_11_normal(
+            units, _hits, _c, next_11, _seed, ok = _simulate_11_normal(
                 pos, last_unit, banner.rolls, 0, {})
             if not ok:
                 errors.append(f"Step {step}: 11-roll simulation failed at {pos}")
@@ -688,8 +709,8 @@ def verify_solution(banners, solution: Solution) -> tuple[bool, list[str]]:
             pos, last_unit = next_11, units[-1]
         else:
             # single pull (normal/platinum/legend)
-            unit, next_p, _n = get_next_pos_normal(pos, banner.rolls.get(pos, {}).get("unit"),
-                                                   banner.rolls, last_unit)
+            unit, next_p, _n, _s = get_next_pos_normal(pos, banner.rolls.get(pos, {}).get("unit"),
+                                                       banner.rolls, last_unit)
             if not unit or not next_p:
                 errors.append(f"Step {step}: could not simulate single pull at {pos}")
                 return False, errors

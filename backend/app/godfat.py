@@ -23,6 +23,7 @@ import json
 import os
 import re
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -107,19 +108,25 @@ def parse_event_list(html_content: str) -> list[Event]:
 class GodfatClient:
     def __init__(
         self,
-        cache_dir: str,
+        cache_dir: Optional[str] = None,
         min_interval: float = 1.5,
         event_list_ttl: float = 1800.0,
         max_retries: int = 4,
         timeout: float = 90.0,
         transport: Optional[httpx.BaseTransport] = None,
+        max_memory_entries: int = 512,
     ):
+        # cache_dir=None -> in-memory (RAM) cache only, so the server stores
+        # nothing on disk (stateless deploy). A path -> on-disk cache (CLI use).
         self.cache_dir = cache_dir
         self.min_interval = min_interval
         self.event_list_ttl = event_list_ttl
         self.max_retries = max_retries
+        self.max_memory_entries = max_memory_entries
         self._last_request = 0.0
-        os.makedirs(cache_dir, exist_ok=True)
+        self._mem: "OrderedDict[str, tuple[float, str]]" = OrderedDict()
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
         self._client = httpx.Client(
             headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
             timeout=timeout,
@@ -143,6 +150,15 @@ class GodfatClient:
         return os.path.join(self.cache_dir, f"{safe}_{h}.html")
 
     def _read_cache(self, key: str, ttl: Optional[float]) -> Optional[str]:
+        if self.cache_dir is None:
+            entry = self._mem.get(key)
+            if entry is None:
+                return None
+            ts, content = entry
+            if ttl is not None and (time.time() - ts) > ttl:
+                return None
+            self._mem.move_to_end(key)  # LRU touch
+            return content
         path = self._cache_path(key)
         if not os.path.exists(path):
             return None
@@ -152,6 +168,12 @@ class GodfatClient:
             return f.read()
 
     def _write_cache(self, key: str, content: str) -> None:
+        if self.cache_dir is None:
+            self._mem[key] = (time.time(), content)
+            self._mem.move_to_end(key)
+            while len(self._mem) > self.max_memory_entries:
+                self._mem.popitem(last=False)  # evict oldest
+            return
         with open(self._cache_path(key), "w", encoding="utf-8") as f:
             f.write(content)
 

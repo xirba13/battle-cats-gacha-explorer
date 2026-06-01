@@ -8,41 +8,36 @@ path** to the units they don't yet own, using godfat seed-tracking data.
 > check a path on [bc.godfat.org](https://bc.godfat.org/) before spending real
 > resources.**
 
-It has four tabs:
+**Fully stateless / no accounts / no database** — your collection lives entirely
+in the page URL (a compact code), so the server stores nothing. It has three tabs:
 
-1. **Screenshot Import** — upload screenshots of your in-game Cat Guide; the app
-   detects which slots are unlocked vs locked and proposes owned units.
-   Detection isn't perfect — review it, then confirm/fix in the Cat Guide.
-2. **Cat Guide** — a wiki-style grid mirroring the in-game Cat Guide order where
-   you toggle units owned/not-owned (and confirm screenshot results). Includes a
-   name search box and owned/rarity filters.
-3. **Path Finder** — enter your seed + resources; the app scrapes godfat's
+1. **Cat Guide** — a wiki-style grid mirroring the in-game Cat Guide order where
+   you toggle units owned/not-owned. Includes a name search box, owned/rarity
+   filters, and copy-link / copy-code / load-code buttons to save your collection.
+2. **Path Finder** — enter your seed + resources; the app scrapes godfat's
    *Upcoming* banners, computes optimal paths to the units you don't own yet
    (each path ends at its last target), and offers an **"I followed this path"**
-   button that records every newly pulled unit as owned, discards the
-   now-invalid paths, and prompts you to re-enter your new seed.
-4. **Instructions** — an in-app usage guide.
+   button that marks every newly pulled unit as owned, decrements your resources,
+   and **auto-fills your new seed** (read from godfat's data).
+3. **Instructions** — an in-app usage guide.
 
 ## Screenshots
 
-| Screenshot Import | Cat Guide |
+| Cat Guide | Cat Guide — search & filters |
 | --- | --- |
-| ![Screenshot import](images/screenshot_import.png) | ![Cat Guide](images/cat_guide.png) |
-| **Cat Guide — search & filters** | **Path Finder — pick banners** |
-| ![Cat Guide filtering](images/cat_guide_filtering.png) | ![Banner selection](images/path_finder_banner_selection.png) |
-| **Path Finder — results** | **After “I followed this path”** |
-| ![Path finder results](images/path_finder_results.png) | ![Pulls saved](images/path_finder_pulls_saved.png) |
+| ![Cat Guide](images/cat_guide.png) | ![Cat Guide filtering](images/cat_guide_filtering.png) |
+| **Path Finder — pick banners** | **Path Finder — results** |
+| ![Banner selection](images/path_finder_banner_selection.png) | ![Path finder results](images/path_finder_results.png) |
 
 ## Prerequisites — read this first
 
 - **You must already be seed-tracking.** This app does **not** derive your seed;
   you provide it. You can find it via [bc-seek.godfat.org/seek](https://bc-seek.godfat.org/seek),
-  and re-read it after every pull session.
-- **Screenshots must use NO filter.** Screenshot the Cat Guide in its **default
-  view with no filter applied**. With a filter on, the slot order won't match the
-  master list and detection will be wrong.
-- **Region:** only **BCEN (English)** ships with the app today. The master list
-  is region-swappable (see [Re-scrapers](#re-scrapers)) but other regions aren't
+  and it's re-filled automatically each time you follow a path.
+- **Nothing is stored on any server.** Your owned units, seed, and resources are
+  encoded in the page URL — bookmark it (or copy your code) to keep them.
+- **Region:** only **BCEN (English)** is supported today. The master list is
+  region-swappable (see [Re-scrapers](#re-scrapers)) but other regions aren't
   bundled yet.
 
 ## Quick start (Docker — recommended)
@@ -54,29 +49,19 @@ docker compose up --build
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000  (docs at `/docs`)
 
-State (SQLite DB, godfat cache, logs) is persisted in `backend/var/`.
+The backend stores **nothing** — no database, no files. godfat pages are cached
+in RAM only.
 
-## Resetting / deleting your data
+## Your data & privacy
 
-All your state — owned units, seed, resources, and followed-path history — lives
-in a single SQLite file at `backend/var/app.sqlite`; cached godfat pages live in
-`backend/var/godfat_cache/`. Both Docker and local runs use this same folder.
+There are no accounts and no server-side storage. Your **owned units, seed, and
+resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`), so:
 
-To wipe everything and start fresh, stop the app and delete them:
-
-```bash
-rm -f  backend/var/app.sqlite       # owned units / seed / resources / history
-rm -rf backend/var/godfat_cache     # cached godfat pages (optional)
-```
-
-```powershell
-# PowerShell
-Remove-Item backend\var\app.sqlite -Force
-Remove-Item backend\var\godfat_cache -Recurse -Force
-```
-
-The database is recreated empty on the next start. To only clear owned units
-(keeping seed/resources/history), call `POST /api/owned/clear`.
+- **Bookmark the page** (or use **Copy link** in the Cat Guide) to save everything.
+- **Copy code** saves just your owned-units code; **Load a code…** restores it if
+  you return without the link.
+- To "reset", just open the site without the hash (a fresh URL) — there's nothing
+  to delete.
 
 ## Quick start (local, without Docker)
 
@@ -101,9 +86,8 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 
 ## How a typical session goes
 
-1. **Cat Guide** tab — mark what you already own (or use Screenshot Import to
-   bulk-fill, then fix any mistakes with one click). Use the search box to find
-   units quickly.
+1. **Cat Guide** tab — mark what you already own (click tiles; use the search box
+   to find units). Copy your link/code to save it.
 2. Top bar — enter your **seed** and your **resources** (rare tickets, cat food,
    platinum tickets, legend tickets).
 3. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
@@ -111,8 +95,8 @@ The Vite dev server proxies `/api` to the backend on port 8000.
    then *Find optimal paths*. godfat pages can be slow, so results are cached per
    seed; the search button locks until you change a banner/wishlist.
 4. Pick a path, pull it in-game, then click **"I followed this path."** Every
-   unit on that path is marked owned and your resources are decremented. Re-read
-   your new seed in-game and enter it to search again.
+   unit on that path is marked owned, your resources are decremented, and your
+   **new seed is filled in automatically** — verify it on godfat, then search again.
 
 ### Pull cost model
 
@@ -127,15 +111,14 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 ## Tests
 
 ```bash
-cd backend && .venv/Scripts/python.exe -m pytest      # 44 tests
+cd backend && .venv/Scripts/python.exe -m pytest      # 37 tests
 ```
 
 Covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
 tickets-first single pulls, plain 11-rolls on non-guaranteed banners, paths
-trimmed to the last target, and re-simulation of every returned solution),
-godfat ingestion (offline via a mock transport), name normalisation, persistence
-+ the followed-path workflow, the FastAPI surface, and screenshot detection
-against two real screenshots at different resolutions.
+trimmed to the last target, resulting-seed capture, and re-simulation of every
+returned solution), godfat ingestion (offline via a mock transport), name
+normalisation, and the stateless service + FastAPI surface (search → followed).
 
 ## Unit icons (offline rendering)
 
@@ -168,24 +151,36 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
 ## Project layout
 
 ```
-backend/
+backend/                # stateless FastAPI service (no DB, no disk writes)
   app/
-    pathfinder.py   # search core (4-resource Pareto, platinum/legend, 11-rolls), verify_solution
-    godfat.py       # Upcoming-banner scraping (cache + rate limit + backoff)
+    pathfinder.py   # search core (4-resource Pareto, platinum/legend, 11-rolls), verify_solution, seed capture
+    godfat.py       # Upcoming-banner scraping (in-memory cache + rate limit + backoff)
     names.py        # godfat<->master name normalisation / alias layer
-    db.py           # SQLite (owned state, settings, history)
     master.py       # region-swappable master loader
-    services.py     # targets, search wiring, followed-path workflow
-    vision.py       # screenshot grid detection + locked/unlocked classify
-    main.py         # FastAPI app
+    services.py     # targets, search wiring, stateless followed-path
+    main.py         # FastAPI app (/api/master, /api/events, /api/search, /api/followed)
   data/cat_guide_master.json
-  tests/            # 44 tests + fixtures (sample banners + 2 screenshots)
-frontend/           # Vite + React (4-tab UI)
-  public/icons/     # ~707 unit icons (offline rendering)
+  tests/            # 37 tests + fixtures (sample banners + event list)
+frontend/           # Vite + React (3-tab UI)
+  src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
+  public/icons/     # ~707 unit icons
   public/top_icons/ # top-bar resource icons
 scrapers/           # godfat banners, Cat Guide list, and icon downloader
 DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
 ```
+
+## Deploying
+
+It's a static frontend + a small stateless API, so it's easy to host:
+
+- **Backend:** any Python host (Render, Fly.io, Railway, a VPS) — `uvicorn
+  app.main:app`. It keeps no state, so it scales/restarts freely (the in-memory
+  godfat cache just warms up again).
+- **Frontend:** build with `pnpm build` and serve the static `dist/` (Netlify,
+  Vercel, GitHub Pages, nginx…).
+- Point the frontend's `/api` at the backend — simplest is a reverse proxy so
+  both share one origin; CORS is enabled if you host them on separate domains.
+- Or just run `docker compose up` on a single box (frontend proxies to backend).
 
 See [DECISIONS.md](DECISIONS.md) for the reverse-engineered godfat URL scheme,
 banner-mechanic confirmations, and other non-obvious choices.

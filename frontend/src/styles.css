@@ -51,6 +51,7 @@ body {
 .resources input { width: 70px; }
 .res-icon { height: 26px; width: 26px; object-fit: contain; vertical-align: middle; }
 .owned-count { font-size: 13px; }
+.region-name { font-size: 13px; font-weight: 600; }
 .disclaimer {
   background: #fff4d6;
   color: #6b4e00;
@@ -89,6 +90,26 @@ body {
 .loading { padding: 40px; text-align: center; color: var(--muted); }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
+
+/* ---- Save / code panel ---- */
+.save-panel {
+  background: #eef7f7;
+  border: 1px solid #cfe6e6;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.save-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.paste-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.paste-row input {
+  flex: 1;
+  min-width: 240px;
+  padding: 6px 10px;
+  border: 1px solid #cdd;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 12px;
+}
 
 /* ---- Cat Guide ---- */
 .guide-toolbar {

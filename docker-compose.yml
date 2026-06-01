@@ -3,12 +3,7 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
-    volumes:
-      # Persist sqlite DB, godfat cache, and the unmatched-names log.
-      - ./backend/var:/app/var
-    environment:
-      BCPE_DB: /app/var/app.sqlite
-      BCPE_CACHE: /app/var/godfat_cache
+    # Stateless: no volumes, no env, nothing persisted (godfat cached in RAM).
 
   frontend:
     build: ./frontend

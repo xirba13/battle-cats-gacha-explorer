@@ -30,14 +30,14 @@ def test_parse_sample_banners():
 
 def test_get_next_pos_normal_advances_track():
     rolls = {"1A": {"unit": "A"}, "2A": {"unit": "B"}}
-    unit, nxt, note = pf.get_next_pos_normal("1A", "A", rolls, None)
+    unit, nxt, note, seed = pf.get_next_pos_normal("1A", "A", rolls, None)
     assert (unit, nxt, note) == ("A", "2A", "Normal")
 
 
 def test_get_next_pos_normal_duplicate_switches_track():
     rolls = {"1A": {"unit": "Dup", "alt_unit": "AltUnit", "alt_next": "9B"}}
     # last_unit == normal unit -> duplicate path -> alt unit + alt next.
-    unit, nxt, note = pf.get_next_pos_normal("1A", "Dup", rolls, "Dup")
+    unit, nxt, note, seed = pf.get_next_pos_normal("1A", "Dup", rolls, "Dup")
     assert (unit, nxt, note) == ("AltUnit", "9B", "Duplicate")
 
 
@@ -151,7 +151,7 @@ def test_plain_11_roll_on_non_guaranteed_banner():
 
 def test_plain_11_roll_advances_11_positions():
     banner = _linear_banner([f"u{i}" for i in range(20)])
-    units, hits, _c, next_pos, ok = pf._simulate_11_normal("1A", None, banner.rolls, 0, {})
+    units, hits, _c, next_pos, _seed, ok = pf._simulate_11_normal("1A", None, banner.rolls, 0, {})
     assert ok and len(units) == 11
     assert units == [f"u{i}" for i in range(11)]
     assert next_pos == "12A"   # 1A + 11 normal pulls
@@ -282,6 +282,26 @@ def test_real_fixture_solutions_all_verify():
         # Cost caps respected.
         assert s.cost["rare_tickets"] <= 30
         assert s.cost["cat_food"] <= 3000
+
+
+def test_parse_captures_result_seed():
+    banners = pf.parse_data(SAMPLE)
+    # godfat encodes the seed *after* a pull in the cat's name link.
+    assert banners[0]["1A"]["unit_seed"] == "4060011645"
+    assert banners[0]["1A"]["guaranteed_seed"] == "2609696845"
+
+
+def test_solution_carries_final_seed():
+    raw = pf.parse_data(SAMPLE)
+    banners = [pf.Banner(name=f"B{i+1}", rolls=r) for i, r in enumerate(raw)]
+    sols = pf.find_paths(banners, {"Mass Production EVA", "The 9th Angel"},
+                         resources={"rare_tickets": 30, "cat_food": 3000},
+                         mode="RESOURCE_LIMIT", max_steps=200000, max_solutions=5)
+    assert sols
+    for s in sols:
+        # final_seed equals the last action's result seed and is a real number.
+        assert s.final_seed == s.actions[-1].result_seed
+        assert s.final_seed and s.final_seed.isdigit()
 
 
 def test_strict_mode_finds_complete_solution():

@@ -1,7 +1,32 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Optimal-Pull Path Tracker.
+building the Battle Cats Gacha Explorer.
+
+## Webapp pivot (stateless, deployable)
+
+The `webapp` branch refocuses the project as a deployable web app that **stores
+nothing**:
+
+- **No database, no uploads.** The SQLite persistence, the followed-path history,
+  and the screenshot-import feature (and its OpenCV dependency) were removed. The
+  backend is now a small **stateless** FastAPI service: `search` and `followed`
+  take the player's state (owned units, seed, resources) in the request and
+  return the new state; nothing is written to disk.
+- **State lives in the URL.** Owned units are encoded as a 730-bit bitmask →
+  version byte + trailing-trimmed bytes → URL-safe base64 (`frontend/src/
+  owncode.js`); seed and resources ride along in the URL hash
+  (`#o=<code>&s=<seed>&r=a.b.c.d`). The URL *is* the save file — copy-link /
+  copy-code / load-code in the Cat Guide. Codes are positional by `global_index`,
+  so appending new units to the master list keeps old codes valid; a version byte
+  guards against a future reordering.
+- **godfat cache is in-memory.** `GodfatClient(cache_dir=None)` uses a size-capped
+  RAM LRU instead of disk, so the server is fully stateless. It's server-side, so
+  it never affects client performance; it persists for the server's lifetime.
+- **Auto seed-fill.** godfat encodes the *resulting* seed in each cat's name-link
+  `href` (`seed=...`). `parse_tables` captures it per cell, the search threads it
+  into `Action.result_seed` / `Solution.final_seed`, and "I followed this path"
+  returns it so the UI fills in the next seed automatically (verify on godfat).
 
 ## M1 — Pathfinder library
 

@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import { api } from "../api.js";
+import React, { useState } from "react";
 
 const RES_FIELDS = [
   { key: "rare_tickets", label: "Rare Tickets", img: "rare_ticket.png" },
@@ -8,46 +7,8 @@ const RES_FIELDS = [
   { key: "legend_tickets", label: "Legend Tickets", img: "legend_ticket.png" },
 ];
 
-export default function TopBar({ state, reloadState, setError }) {
-  const [seed, setSeed] = useState("");
-  const [resources, setResources] = useState(null);
+export default function TopBar({ region, seed, setSeed, resources, setResources, ownedCount, disclaimer }) {
   const [showDisclaimer, setShowDisclaimer] = useState(true);
-
-  useEffect(() => {
-    if (state) {
-      setSeed(state.seed || "");
-      setResources(state.resources);
-    }
-  }, [state]);
-
-  if (!state || !resources) return <header className="topbar">Loading…</header>;
-
-  const saveSeed = async () => {
-    try {
-      await api.setSeed(seed || null);
-      reloadState();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const saveResources = async () => {
-    try {
-      await api.setResources(resources);
-      reloadState();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const changeRegion = async (region) => {
-    try {
-      await api.setRegion(region);
-      reloadState();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
 
   return (
     <header className="topbar">
@@ -55,13 +16,9 @@ export default function TopBar({ state, reloadState, setError }) {
         <h1>🐾 Battle Cats Gacha Explorer</h1>
         <div className="region">
           <label>Region</label>
-          <select value={state.region} onChange={(e) => changeRegion(e.target.value)}>
-            {state.regions.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
+          <span className="region-name">{region}</span>
         </div>
-        <div className="owned-count">Owned: <b>{state.owned_count}</b></div>
+        <div className="owned-count">Owned: <b>{ownedCount}</b></div>
       </div>
 
       <div className="topbar-row">
@@ -70,9 +27,7 @@ export default function TopBar({ state, reloadState, setError }) {
           <input
             value={seed}
             placeholder="enter your seed"
-            onChange={(e) => setSeed(e.target.value)}
-            onBlur={saveSeed}
-            onKeyDown={(e) => e.key === "Enter" && saveSeed()}
+            onChange={(e) => setSeed(e.target.value.trim())}
           />
         </div>
         <div className="resources">
@@ -84,18 +39,17 @@ export default function TopBar({ state, reloadState, setError }) {
                 min="0"
                 value={resources[f.key]}
                 onChange={(e) =>
-                  setResources({ ...resources, [f.key]: Number(e.target.value) })
+                  setResources({ ...resources, [f.key]: Math.max(0, Number(e.target.value) || 0) })
                 }
-                onBlur={saveResources}
               />
             </label>
           ))}
         </div>
       </div>
 
-      {showDisclaimer && (
+      {showDisclaimer && disclaimer && (
         <div className="disclaimer" onClick={() => setShowDisclaimer(false)}>
-          ⚠️ <b>Experimental.</b> {state.disclaimer} <i>(click to hide)</i>
+          ⚠️ <b>Experimental.</b> {disclaimer} <i>(click to hide)</i>
         </div>
       )}
     </header>
