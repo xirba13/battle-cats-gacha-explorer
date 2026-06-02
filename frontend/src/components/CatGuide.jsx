@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import UnitIcon from "./UnitIcon.jsx";
-import { decodeOwned } from "../owncode.js";
 
 const RARITY_CLASS = {
   Normal: "r-normal",
@@ -11,7 +10,7 @@ const RARITY_CLASS = {
   Legendary: "r-legend",
 };
 
-export default function CatGuide({ master, owned, ownedCode, toggleOwned, replaceOwned, setError }) {
+export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoadCode, setError }) {
   const [filter, setFilter] = useState("all"); // all | owned | missing
   const [rarity, setRarity] = useState("all");
   const [query, setQuery] = useState("");
@@ -62,10 +61,10 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, replac
   const loadCode = async () => {
     const c = pasteVal.trim();
     if (!c) return;
-    const set = await decodeOwned(c);
-    replaceOwned(set);
+    const n = await onLoadCode(c);
     setPasteVal("");
     setPasteOpen(false);
+    if (n === 0) setError("That code didn't contain any known units — check it's complete.");
   };
 
   return (

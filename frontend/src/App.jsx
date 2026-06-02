@@ -89,6 +89,18 @@ export default function App() {
 
   const replaceOwned = useCallback((set) => setOwnedState(new Set(set)), []);
 
+  // Decode a pasted code -> owned set (uid -> global_index via the master maps).
+  // Returns how many known units it contained (0 => invalid/empty code).
+  const loadCode = useCallback(
+    async (code) => {
+      if (!maps) return 0;
+      const set = await decodeOwned(code, maps.uidToId);
+      replaceOwned(set);
+      return set.size;
+    },
+    [maps, replaceOwned]
+  );
+
   return (
     <div className="app">
       <TopBar
@@ -124,7 +136,7 @@ export default function App() {
             owned={owned}
             ownedCode={ownedCode}
             toggleOwned={toggleOwned}
-            replaceOwned={replaceOwned}
+            onLoadCode={loadCode}
             setError={setError}
           />
         )}
