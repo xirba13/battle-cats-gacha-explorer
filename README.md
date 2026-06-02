@@ -161,6 +161,9 @@ It's a static frontend + a small stateless API, so it's easy to host:
   Vercel, GitHub Pages, nginx…).
 - Point the frontend's `/api` at the backend — simplest is a reverse proxy so
   both share one origin; CORS is enabled if you host them on separate domains.
+  For split hosting, build the frontend with the backend URL baked in:
+  `VITE_API_BASE=https://api.yourbackend.com pnpm build` (leave it unset for
+  same-origin / reverse-proxy deploys — the default).
 - Or just run `docker compose up` on a single box (frontend proxies to backend).
 
 See [DECISIONS.md](DECISIONS.md) for the reverse-engineered godfat URL scheme,
