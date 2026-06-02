@@ -111,14 +111,18 @@ The Vite dev server proxies `/api` to the backend on port 8000.
 ## Tests
 
 ```bash
-cd backend && .venv/Scripts/python.exe -m pytest      # 37 tests
+cd backend && .venv/Scripts/python.exe -m pytest      # 41 backend tests
+cd frontend && pnpm test                              # owned-code (incl. insertion-safety)
 ```
 
-Covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
+Backend covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
 tickets-first single pulls, plain 11-rolls on non-guaranteed banners, paths
 trimmed to the last target, resulting-seed capture, and re-simulation of every
 returned solution), godfat ingestion (offline via a mock transport), name
-normalisation, and the stateless service + FastAPI surface (search → followed).
+normalisation, the stateless service + FastAPI surface (search → followed), and
+the master-list `uid` integrity guards. The frontend test round-trips the URL
+owned-code and proves a mid-guide unit insertion can't shift or falsely-own
+existing units.
 
 ## Unit icons (offline rendering)
 
