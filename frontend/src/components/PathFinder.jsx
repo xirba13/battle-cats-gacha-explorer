@@ -235,9 +235,9 @@ function Results({ result, onFollow }) {
               🎯 {sol.collected_count} target(s): {sol.collected_units.join(", ")}
             </span>
             <span className="sol-cost">Cost: <CostLine cost={sol.cost} /></span>
-            <span className={sol.verified ? "verified" : "unverified"}>
+            {/* <span className={sol.verified ? "verified" : "unverified"}>
               {sol.verified ? "✓ verified" : "✗ UNVERIFIED"}
-            </span>
+            </span> */}
             <button className="primary small" onClick={() => onFollow(sol)}>
               I followed this path
             </button>

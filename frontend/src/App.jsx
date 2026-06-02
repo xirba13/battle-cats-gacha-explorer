@@ -15,13 +15,15 @@ const TABS = [
 const REGION = "BCEN (English)";
 
 export default function App() {
-  const [tab, setTab] = useState("guide");
   const [master, setMaster] = useState(null);
   const [error, setError] = useState(null);
 
   // All player state lives client-side and is mirrored to the URL hash. owned is
-  // an (async-decoded) base64 code; seed + resources parse synchronously.
+  // an (async-decoded) base64 code; seed + resources + tab parse synchronously.
   const raw0 = useRef(readRawState()).current;
+  const [tab, setTab] = useState(
+    TABS.some((t) => t.id === raw0.tab) ? raw0.tab : "guide"
+  );
   const [owned, setOwnedState] = useState(new Set());
   const [seed, setSeed] = useState(raw0.seed);
   const [resources, setResources] = useState(raw0.resources);
@@ -46,11 +48,11 @@ export default function App() {
     encodeOwned(owned).then(setOwnedCode);
   }, [owned]);
 
-  // Mirror state to the URL (the URL is the save file).
+  // Mirror state to the URL (the URL is the save file), including the active tab.
   useEffect(() => {
     if (!ready.current) return;
-    writeHash({ ownedCode, seed, resources });
-  }, [ownedCode, seed, resources]);
+    writeHash({ ownedCode, seed, resources, tab });
+  }, [ownedCode, seed, resources, tab]);
 
   const toggleOwned = useCallback((index) => {
     setOwnedState((prev) => {

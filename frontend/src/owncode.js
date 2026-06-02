@@ -135,14 +135,16 @@ export function readRawState() {
     ownedCode: p.get("o") || "",
     seed: p.get("s") || "",
     resources: decodeResources(p.get("r")),
+    tab: p.get("t") || "",
   };
 }
 
-export function buildHash({ ownedCode, seed, resources }) {
+export function buildHash({ ownedCode, seed, resources, tab }) {
   const p = new URLSearchParams();
   if (ownedCode) p.set("o", ownedCode);
   if (seed) p.set("s", seed);
   p.set("r", encodeResources(resources));
+  if (tab) p.set("t", tab);
   return "#" + p.toString();
 }
 
