@@ -49,6 +49,26 @@ UNIT_RE = re.compile(
 PANEL_RE = re.compile(r'id="mw-customcollapsible-(page\d+)"')
 RARITY_RE = re.compile(r'class="rarity-button[^"]*"[^>]*>([^<]+)</div>')
 
+# Stable per-unit id used as the URL bitmask key (see frontend/src/owncode.js).
+# It must NEVER change for an existing unit and only grow for new ones, so it is
+# derived from the in-game unit id (the UniNNN in the icon filename) — NOT the
+# Cat Guide display position (global_index renumbers when a unit is inserted
+# mid-guide). Ancient Eggs all share the Uni000_m00 placeholder icon, so they
+# have no distinct UniNNN; their unique, stable discriminator is the code in
+# their name ("Ancient Egg: N107"), mapped into a reserved high block that real
+# game ids (which grow slowly) won't reach.
+EGG_UID_BASE = 100_000
+EGG_RE = re.compile(r"Ancient Egg:\s*N(\d+)", re.IGNORECASE)
+ICON_ID_RE = re.compile(r"Uni(\d+)")
+
+
+def compute_uid(name: str, icon: str):
+    egg = EGG_RE.search(name)
+    if egg:
+        return EGG_UID_BASE + int(egg.group(1))
+    m = ICON_ID_RE.search(icon or "")
+    return int(m.group(1)) if m else None
+
 
 def load_source(args) -> str:
     if args.input:
@@ -102,13 +122,15 @@ def parse(section: str):
         rar_m = RARITY_RE.search(chunk)
         rarity = html.unescape(rar_m.group(1).strip()) if rar_m else "Unknown"
         for slot, (name, url, icon) in enumerate(UNIT_RE.findall(chunk)):
+            name = html.unescape(name).strip()
             units.append({
                 "global_index": gidx,
+                "uid": compute_uid(name, icon),
                 "page": i + 1,
                 "slot": slot,
                 "row": slot // 6,
                 "col": slot % 6,
-                "name": html.unescape(name).strip(),
+                "name": name,
                 "rarity_guide": rarity,
                 "rarity_godfat": RARITY_GODFAT.get(rarity, rarity),
                 "icon": icon,
@@ -130,6 +152,24 @@ def main():
     content = load_source(args)
     section = slice_region(content, args.region)
     units, pages = parse(section)
+
+    # uid is the URL bitmask key, so it must be unique. Catch any new icon
+    # collision (the way Ancient Eggs share Uni000_m00) before it ships.
+    seen: dict[int, str] = {}
+    missing = [u["name"] for u in units if u["uid"] is None]
+    collisions = []
+    for u in units:
+        uid = u["uid"]
+        if uid is None:
+            continue
+        if uid in seen:
+            collisions.append((uid, seen[uid], u["name"]))
+        else:
+            seen[uid] = u["name"]
+    if missing:
+        print(f"WARNING: {len(missing)} units have no derivable uid:", missing[:10])
+    if collisions:
+        print(f"WARNING: {len(collisions)} uid collisions (need a disambiguation rule):", collisions[:10])
 
     out = {
         "_meta": {

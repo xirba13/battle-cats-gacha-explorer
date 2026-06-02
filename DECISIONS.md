@@ -13,21 +13,31 @@ nothing**:
   backend is now a small **stateless** FastAPI service: `search` and `followed`
   take the player's state (owned units, seed, resources) in the request and
   return the new state; nothing is written to disk.
-- **State lives in the URL.** Owned units are a bitmask (1 bit per
-  `global_index`), stored as `[format byte][payload]` → URL-safe base64
-  (`frontend/src/owncode.js`). We keep whichever payload is smaller: `0x01` raw
-  (trailing-trimmed) or `0x02` raw-deflate via the browser-native
-  `CompressionStream` (no dependency; async). Real collections are highly
-  structured (you own all the commons — long runs of 1s), so deflate typically
-  ~halves the code and a complete dex is ~11 chars; pick-smaller means it's never
-  worse than the ~124-char raw. Seed and resources ride along uncompressed in the
-  hash (`#o=<code>&s=<seed>&r=a.b.c.d`). The URL *is* the save file (copy-link /
-  copy-code / load-code).
-- **Scalable by design.** Nothing hardcodes the unit count: the bitmask spans
-  only up to the highest owned index and decode reads whatever bits are present,
-  so appending new units to the master list (higher indices) keeps old codes
-  valid — new units just read as not-owned. The format byte leaves room for
-  future encodings without breaking old links.
+- **State lives in the URL.** Owned units are a bitmask stored as
+  `[format byte][payload]` → URL-safe base64 (`frontend/src/owncode.js`), keyed
+  on each unit's **stable in-game id** (`uid`), not its Cat Guide display
+  position (`global_index`) — see "Stable uid" below. We keep whichever payload
+  is smallest: `0x01` raw (trailing-trimmed), `0x02` raw-deflate via the
+  browser-native `CompressionStream` (no dependency; async), or `0x03` a
+  sorted-delta LEB128 list. Dense dexes deflate to a handful of chars; sparse
+  collections (and the high-uid eggs) favour the varint list; pick-smallest means
+  it's never worse than the ~124-char raw. The runtime keys on `global_index`
+  everywhere else, translating to/from `uid` only at this URL boundary (App.jsx
+  builds the maps from the master). Seed and resources ride along uncompressed in
+  the hash (`#o=<code>&s=<seed>&r=a.b.c.d`). The URL *is* the save file
+  (copy-link / copy-code / load-code).
+- **Stable uid (insertion-safe).** `global_index` is the Cat Guide display order,
+  which **renumbers when a unit is inserted mid-guide** — so keying the URL
+  bitmask on it would silently corrupt every shared link on the next master
+  update. Instead `uid` is the in-game unit id (the `UniNNN` in the icon
+  filename), which only grows as units are released. The 24 Ancient Eggs share
+  one placeholder icon (`Uni000_m00`) so they have no distinct `UniNNN`; they get
+  `uid = 100000 + <name N-code>` (a reserved block real ids won't reach).
+  `scrapers/update_cat_guide.py` derives `uid` per unit and asserts uniqueness.
+  The bitmask spans only up to the highest owned uid, and decode skips uids
+  absent from the current master, so new (higher-uid) units read as not-owned in
+  old codes and retired units are dropped. The format byte leaves room for future
+  schemes without breaking old links.
 - **godfat cache is in-memory.** `GodfatClient(cache_dir=None)` uses a size-capped
   RAM LRU instead of disk, so the server is fully stateless. It's server-side, so
   it never affects client performance; it persists for the server's lifetime.

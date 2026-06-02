@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 import { decodeOwned, encodeOwned, readRawState, writeHash } from "./owncode.js";
 import TopBar from "./components/TopBar.jsx";
@@ -34,19 +34,35 @@ export default function App() {
     api.master().then(setMaster).catch((e) => setError(e.message));
   }, []);
 
-  // Decode the owned set from the URL once on load, then enable URL writing.
+  // global_index <-> stable uid maps. The owned set keys on global_index
+  // everywhere at runtime; these translate only at the URL boundary so shared
+  // links survive future mid-guide insertions. Built once the master loads.
+  const maps = useMemo(() => {
+    if (!master) return null;
+    const idToUid = new Map();
+    const uidToId = new Map();
+    for (const u of master.units) {
+      idToUid.set(u.global_index, u.uid);
+      uidToId.set(u.uid, u.global_index);
+    }
+    return { idToUid, uidToId };
+  }, [master]);
+
+  // Decode the owned set from the URL once the master (uid map) is ready, then
+  // enable URL writing.
   useEffect(() => {
-    decodeOwned(raw0.ownedCode).then((set) => {
+    if (!maps || ready.current) return;
+    decodeOwned(raw0.ownedCode, maps.uidToId).then((set) => {
       setOwnedState(set);
       ready.current = true;
     });
-  }, [raw0.ownedCode]);
+  }, [maps, raw0.ownedCode]);
 
   // Re-encode owned -> code whenever it changes (after the initial decode).
   useEffect(() => {
-    if (!ready.current) return;
-    encodeOwned(owned).then(setOwnedCode);
-  }, [owned]);
+    if (!ready.current || !maps) return;
+    encodeOwned(owned, maps.idToUid).then(setOwnedCode);
+  }, [owned, maps]);
 
   // Mirror state to the URL (the URL is the save file), including the active tab.
   useEffect(() => {

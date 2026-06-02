@@ -2,20 +2,29 @@
 // (de)serialize the rest of the client state (seed + resources) to the URL hash.
 // Nothing is stored on a server — the URL *is* the save file.
 //
-// The owned set is a bitmask (1 bit per global_index). We store whichever is
-// smaller, behind a 1-byte format tag:
-//   0x01  raw bitmask          (trailing zero bytes trimmed)
-//   0x02  raw-deflate bitmask  (CompressionStream; great on real collections)
-// then base64url. Picking the smaller means it's never worse than raw.
+// The owned set is a bitmask, but keyed on each unit's STABLE in-game id (`uid`),
+// NOT its Cat Guide display position (`global_index`). global_index renumbers
+// whenever a unit is inserted mid-guide, which would silently corrupt every
+// shared link; a uid only ever grows as new units are released, so old codes
+// stay valid. The runtime keeps using global_index everywhere else — the caller
+// passes the global_index<->uid maps (from the master list) so we translate only
+// at this URL boundary.
 //
-// Scalability: nothing here hardcodes the unit count. The bitmask only spans up
-// to the highest owned index (trailing-trimmed) and decode reads whatever bits
-// are present, so as new units are appended to the master list (higher indices)
-// existing codes stay valid — new units simply read as not-owned. The format
-// byte leaves room for future schemes without breaking old links.
+// We store whichever payload is smallest, behind a 1-byte format tag:
+//   0x01  raw bitmask               (trailing zero bytes trimmed)
+//   0x02  raw-deflate bitmask        (CompressionStream; great on dense dexes)
+//   0x03  sorted-delta varint list   (great on sparse collections / high uids)
+// then base64url. Picking the smallest means it's never worse than raw.
+//
+// Scalability: nothing hardcodes the unit count. The bitmask spans only up to the
+// highest owned uid (trailing-trimmed) and decode reads whatever is present, so
+// new (higher-uid) units read as not-owned in old codes. uids absent from the
+// current master (e.g. a retired unit) are skipped on decode. The format byte
+// leaves room for future schemes without breaking old links.
 
 const FMT_RAW = 0x01;
 const FMT_DEFLATE = 0x02;
+const FMT_LIST = 0x03;
 
 function bytesToBase64url(bytes) {
   let bin = "";
@@ -32,12 +41,28 @@ function base64urlToBytes(s) {
   return bytes;
 }
 
-function bitmaskBytes(set) {
+// Bitmask over uids: bit `uid` set iff owned. Trailing zero bytes are implicit
+// (the array spans only up to the highest owned uid).
+function bitmaskBytes(uids) {
   let max = 0;
-  for (const i of set) if (i > max) max = i;
+  for (const i of uids) if (i > max) max = i;
   const ba = new Uint8Array((max >> 3) + 1);
-  for (const i of set) ba[i >> 3] |= 1 << (i & 7);
+  for (const i of uids) ba[i >> 3] |= 1 << (i & 7);
   return ba;
+}
+
+// Sorted uids as unsigned-LEB128 gaps (first gap = the value, since prev=0).
+// Tiny for sparse sets and for sets with a few very high uids (e.g. eggs).
+function varintListBytes(uids) {
+  const out = [];
+  let prev = 0;
+  for (const v of [...uids].sort((a, b) => a - b)) {
+    let d = v - prev;
+    prev = v;
+    while (d >= 0x80) { out.push((d & 0x7f) | 0x80); d >>>= 7; }
+    out.push(d);
+  }
+  return new Uint8Array(out);
 }
 
 function withTag(tag, bytes) {
@@ -63,26 +88,41 @@ async function inflateRaw(bytes) {
   return new Uint8Array(await new Response(ds.readable).arrayBuffer());
 }
 
-// Owned set (of global_index numbers) -> code string (async: may compress).
-export async function encodeOwned(ownedSet) {
-  if (!ownedSet || ownedSet.size === 0) return "";
-  const bits = bitmaskBytes(ownedSet);
+// Owned set (of global_index numbers) -> code string. Keyed on stable uid via
+// idToUid (Map<global_index, uid>); global_index values without a uid (not in
+// the master) are skipped. Async: may compress.
+export async function encodeOwned(ownedSet, idToUid) {
+  if (!ownedSet || ownedSet.size === 0 || !idToUid) return "";
+  const uids = [];
+  for (const gi of ownedSet) {
+    const uid = idToUid.get(gi);
+    if (uid !== undefined) uids.push(uid);
+  }
+  if (uids.length === 0) return "";
+
+  const bits = bitmaskBytes(uids);
   let best = withTag(FMT_RAW, bits);
+
+  const list = varintListBytes(uids);
+  if (list.length + 1 < best.length) best = withTag(FMT_LIST, list);
+
   if (typeof CompressionStream !== "undefined") {
     try {
       const deflated = await deflateRaw(bits);
       if (deflated.length + 1 < best.length) best = withTag(FMT_DEFLATE, deflated);
     } catch {
-      /* fall back to raw */
+      /* fall back to whatever is smallest so far */
     }
   }
   return bytesToBase64url(best);
 }
 
-// Code string -> owned set (async: may decompress).
-export async function decodeOwned(code) {
+// Code string -> owned set (of global_index numbers). Maps each stored uid back
+// to the current global_index via uidToId (Map<uid, global_index>); uids missing
+// from the current master are skipped. Async: may decompress.
+export async function decodeOwned(code, uidToId) {
   const set = new Set();
-  if (!code) return set;
+  if (!code || !uidToId) return set;
   let bytes;
   try {
     bytes = base64urlToBytes(code);
@@ -92,6 +132,22 @@ export async function decodeOwned(code) {
   if (bytes.length === 0) return set;
   const fmt = bytes[0];
   let bits = bytes.subarray(1);
+
+  const addUid = (uid) => {
+    const gi = uidToId.get(uid);
+    if (gi !== undefined) set.add(gi);
+  };
+
+  if (fmt === FMT_LIST) {
+    let acc = 0, val = 0, shift = 0;
+    for (let i = 0; i < bits.length; i++) {
+      const b = bits[i];
+      val |= (b & 0x7f) << shift;
+      shift += 7;
+      if ((b & 0x80) === 0) { acc += val; addUid(acc); val = 0; shift = 0; }
+    }
+    return set;
+  }
   if (fmt === FMT_DEFLATE) {
     if (typeof DecompressionStream === "undefined") return set;
     try {
@@ -104,7 +160,7 @@ export async function decodeOwned(code) {
   }
   for (let i = 0; i < bits.length; i++) {
     const b = bits[i];
-    for (let bit = 0; bit < 8; bit++) if (b & (1 << bit)) set.add(i * 8 + bit);
+    for (let bit = 0; bit < 8; bit++) if (b & (1 << bit)) addUid(i * 8 + bit);
   }
   return set;
 }
