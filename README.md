@@ -40,18 +40,6 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
   **version 15.3.0**. The master list is region-swappable (see
   [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
-## Quick start (Docker — recommended)
-
-```bash
-docker compose up --build
-```
-
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000  (docs at `/docs`)
-
-The backend stores **nothing** — no database, no files. godfat pages are cached
-in RAM only.
-
 ## Your data & privacy
 
 There are no accounts and no server-side storage. Your **owned units, seed, and
@@ -62,27 +50,6 @@ resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`),
   you return without the link.
 - To "reset", just open the site without the hash (a fresh URL) — there's nothing
   to delete.
-
-## Quick start (local, without Docker)
-
-Requires **Python 3.11** and **Node 20 + pnpm**.
-
-```bash
-# backend
-python -m venv backend/.venv
-backend/.venv/Scripts/pip install -r backend/requirements.txt      # Windows
-# backend/.venv/bin/pip install -r backend/requirements.txt        # macOS/Linux
-backend/.venv/Scripts/uvicorn app.main:app --reload --port 8000    # (run from backend/)
-
-# frontend (in another terminal)
-cd frontend
-pnpm install
-pnpm dev
-```
-
-The Vite dev server proxies `/api` to the backend on port 8000.
-
-`make dev` / `make install` / `make test` wrap these (see the `Makefile`).
 
 ## How a typical session goes
 
