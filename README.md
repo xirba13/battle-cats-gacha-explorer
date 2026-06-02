@@ -36,9 +36,9 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
   and it's re-filled automatically each time you follow a path.
 - **Nothing is stored on any server.** Your owned units, seed, and resources are
   encoded in the page URL — bookmark it (or copy your code) to keep them.
-- **Region:** only **BCEN (English)** is supported today. The master list is
-  region-swappable (see [Re-scrapers](#re-scrapers)) but other regions aren't
-  bundled yet.
+- **Region / version:** **BCEN (English) only**, unit list current as of game
+  **version 15.3.0**. The master list is region-swappable (see
+  [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
 ## Quick start (Docker — recommended)
 
@@ -152,6 +152,16 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
   `cat_guide_master_<region>.json` into `backend/data/` and the app will offer
   that region in the top-bar selector.
 
+### Updating to a newer game version
+
+When new units release, just re-run the Cat Guide scraper and download the new
+icons. **Existing shared codes keep working:** the owned-code is keyed on each
+unit's stable in-game `uid` (the `UniNNN` from its icon), not its Cat Guide
+position, so newly added units only ever append higher uids and read as
+not-owned in old codes — they never shift or falsely-own existing units. (The
+`uid` integrity is enforced by `backend/tests/test_master_uid.py`, which fails if
+a re-scrape ever breaks the naming convention.)
+
 ## Project layout
 
 ```
@@ -163,8 +173,8 @@ backend/                # stateless FastAPI service (no DB, no disk writes)
     master.py       # region-swappable master loader
     services.py     # targets, search wiring, stateless followed-path
     main.py         # FastAPI app (/api/master, /api/events, /api/search, /api/followed)
-  data/cat_guide_master.json
-  tests/            # 37 tests + fixtures (sample banners + event list)
+  data/cat_guide_master.json   # BCEN unit list (game v15.3.0), keyed by stable uid
+  tests/            # 41 tests + fixtures (sample banners + event list)
 frontend/           # Vite + React (3-tab UI)
   src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
   public/icons/     # ~707 unit icons
