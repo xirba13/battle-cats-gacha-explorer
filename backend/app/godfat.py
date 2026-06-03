@@ -114,16 +114,28 @@ class GodfatClient:
         max_retries: int = 4,
         timeout: float = 90.0,
         transport: Optional[httpx.BaseTransport] = None,
-        max_memory_entries: int = 512,
+        max_memory_entries: int = 24,
+        max_memory_bytes: int = 16 * 1024 * 1024,
+        banner_ttl: float = 1800.0,
     ):
         # cache_dir=None -> in-memory (RAM) cache only, so the server stores
         # nothing on disk (stateless deploy). A path -> on-disk cache (CLI use).
+        #
+        # The cache only really helps WITHIN one user's session (the event list
+        # is reused by the follow-up search; re-searching a seed avoids re-hitting
+        # slow godfat). Across users seeds differ, so there's little cross-user
+        # reuse — we therefore keep it small and short-lived: bounded by entry
+        # count AND total bytes (godfat pages are ~0.2-0.5 MB each), and even the
+        # immutable banner pages expire via banner_ttl so RAM doesn't accumulate.
         self.cache_dir = cache_dir
         self.min_interval = min_interval
         self.event_list_ttl = event_list_ttl
+        self.banner_ttl = banner_ttl
         self.max_retries = max_retries
         self.max_memory_entries = max_memory_entries
+        self.max_memory_bytes = max_memory_bytes
         self._last_request = 0.0
+        self._mem_bytes = 0
         self._mem: "OrderedDict[str, tuple[float, str]]" = OrderedDict()
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
@@ -169,10 +181,18 @@ class GodfatClient:
 
     def _write_cache(self, key: str, content: str) -> None:
         if self.cache_dir is None:
+            old = self._mem.pop(key, None)
+            if old is not None:
+                self._mem_bytes -= len(old[1])
             self._mem[key] = (time.time(), content)
-            self._mem.move_to_end(key)
-            while len(self._mem) > self.max_memory_entries:
-                self._mem.popitem(last=False)  # evict oldest
+            self._mem_bytes += len(content)
+            # Evict oldest until under BOTH the entry-count and byte caps.
+            while self._mem and (
+                len(self._mem) > self.max_memory_entries
+                or self._mem_bytes > self.max_memory_bytes
+            ):
+                _, (_, evicted) = self._mem.popitem(last=False)
+                self._mem_bytes -= len(evicted)
             return
         with open(self._cache_path(key), "w", encoding="utf-8") as f:
             f.write(content)
@@ -213,9 +233,12 @@ class GodfatClient:
 
     def fetch_banner_html(self, seed: str | int, event_id: str, count: int = DEFAULT_COUNT) -> str:
         key = f"banner_seed{seed}_event{event_id}_count{count}"
+        # A banner is immutable for a given seed, but we still expire it
+        # (banner_ttl) so the RAM cache self-clears between users on disk-less
+        # deploys rather than living forever.
         return self._fetch(
             {"seed": str(seed), "event": event_id, "count": str(count)},
-            key, ttl=None,  # immutable for a given seed
+            key, ttl=self.banner_ttl,
         )
 
     def fetch_banner(self, seed: str | int, event: Event, count: int = DEFAULT_COUNT) -> Optional[pathfinder.Banner]:

@@ -108,6 +108,19 @@ def test_ingest_upcoming_builds_typed_banners(tmp_path, event_html, banner_html)
     assert all(len(b.rolls) > 0 for b in result.banners)
 
 
+def test_memory_cache_bounded_by_entries_and_bytes():
+    # The in-memory cache must stay tiny so disk-less hosts (512 MB) don't OOM
+    # from accumulated godfat pages across users.
+    c = GodfatClient(cache_dir=None, max_memory_entries=3, max_memory_bytes=100)
+    for i in range(6):
+        c._write_cache(f"k{i}", "x" * 30)
+    assert len(c._mem) <= 3
+    assert c._mem_bytes <= 100
+    # Byte accounting stays exact after evictions.
+    assert c._mem_bytes == sum(len(v[1]) for v in c._mem.values())
+    c.close()
+
+
 def test_ingest_includes_special_when_tickets_present(tmp_path, event_html, banner_html):
     def handler(request):
         if "event" in request.url.params:
