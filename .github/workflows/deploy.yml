@@ -1,0 +1,18 @@
+name: Deploy backend
+on:
+  push:
+    branches: [webapp]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: bash /home/ubuntu/deploy.sh
