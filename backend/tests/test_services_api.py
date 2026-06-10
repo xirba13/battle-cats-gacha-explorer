@@ -88,9 +88,11 @@ def client(monkeypatch):
 def test_health_and_master(client):
     assert client.get("/api/health").json() == {"status": "ok"}
     m = client.get("/api/master").json()
-    assert m["meta"]["total"] == 730
+    # Update-proof: total matches the actual list and is in a sane range
+    # (grows as new units release; ~730+ for BCEN).
+    assert m["meta"]["total"] == len(m["units"])
+    assert len(m["units"]) >= 730
     assert "disclaimer" in m
-    assert len(m["units"]) == 730
 
 
 def test_search_then_followed_stateless(client):
@@ -111,6 +113,6 @@ def test_search_then_followed_stateless(client):
     assert follow["new_seed"] == sol["final_seed"]
     assert follow["units_added_count"] >= 1
     assert isinstance(follow["owned"], list) and follow["owned"]
-    # Server kept no state: a fresh /api/master still reports 0 implicit ownership
+    # Server kept no state: a fresh /api/master still lists the full unit set
     # (owned is client-side; master just lists units).
-    assert len(client.get("/api/master").json()["units"]) == 730
+    assert len(client.get("/api/master").json()["units"]) >= 730

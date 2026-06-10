@@ -37,7 +37,7 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
 - **Nothing is stored on any server.** Your owned units, seed, and resources are
   encoded in the page URL — bookmark it (or copy your code) to keep them.
 - **Region / version:** **BCEN (English) only**, unit list current as of game
-  **version 15.3.0**. The master list is region-swappable (see
+  **version 15.4.0**. The master list is region-swappable (see
   [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
 ## Your data & privacy
@@ -95,7 +95,7 @@ existing units.
 
 The Cat Guide tiles render from a locally-served icon set in
 `frontend/public/icons/` (so the app doesn't hit the wiki CDN on every render,
-and works offline). These ~707 icons are **shipped in the repo**. If an icon is
+and works offline). These ~716 icons are **shipped in the repo**. If an icon is
 missing locally the UI automatically falls back to the wiki URL.
 
 Regenerate / refresh them (e.g. after swapping the master list for a new region)
@@ -140,11 +140,11 @@ backend/                # stateless FastAPI service (no DB, no disk writes)
     master.py       # region-swappable master loader
     services.py     # targets, search wiring, stateless followed-path
     main.py         # FastAPI app (/api/master, /api/events, /api/search, /api/followed)
-  data/cat_guide_master.json   # BCEN unit list (game v15.3.0), keyed by stable uid
+  data/cat_guide_master.json   # BCEN unit list (game v15.4.0), keyed by stable uid
   tests/            # 41 tests + fixtures (sample banners + event list)
 frontend/           # Vite + React (3-tab UI)
   src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
-  public/icons/     # ~707 unit icons
+  public/icons/     # ~716 unit icons
   public/top_icons/ # top-bar resource icons
 scrapers/           # godfat banners, Cat Guide list, and icon downloader
 DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
