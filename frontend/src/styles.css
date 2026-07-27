@@ -156,7 +156,20 @@ body {
 .tile:hover { transform: scale(1.04); z-index: 2; }
 .tile img { width: 100%; aspect-ratio: 1; object-fit: contain; }
 .tile.locked { filter: grayscale(1) opacity(0.4); background: var(--locked); }
-.tile-name { font-size: 10px; text-align: center; line-height: 1.1; margin-top: 2px; max-height: 24px; overflow: hidden; }
+.tile-name {
+  width: 100%;
+  height: 2.4em;
+  margin-top: 4px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: clamp(11px, 1.1vw, 13px);
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
 
 /* rarity left border colors */
 .r-normal { border-left-color: #9a9a9a; }
