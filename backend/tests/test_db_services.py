@@ -151,7 +151,8 @@ def test_api_smoke(tmp_path, monkeypatch):
     assert r.json()["owned_count"] == 1
 
     m = client.get("/api/master").json()
-    assert m["meta"]["total"] == 730
+    assert m["meta"]["total"] == len(m["units"])
+    assert len(m["units"]) >= 744
     owned_unit = next(u for u in m["units"] if u["global_index"] == 3)
     assert owned_unit["owned"] is True
 

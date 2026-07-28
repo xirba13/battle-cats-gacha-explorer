@@ -1,7 +1,7 @@
 # Battle Cats Gacha Explorer
 
 A web app that helps a Battle Cats player find the **most resource-efficient pull
-path** to the units they don't yet own, using godfat seed-tracking data. Updated up to v15.3.0
+path** to the units they don't yet own, using godfat seed-tracking data. Updated up to v15.5.0
 
 > ⚠️ **Experimental and not fully tested.** Every path the app shows is
 > re-simulated against the parsed godfat data before display, but **always
@@ -141,7 +141,7 @@ against two real screenshots at different resolutions.
 
 The Cat Guide tiles render from a locally-served icon set in
 `frontend/public/icons/` (so the app doesn't hit the wiki CDN on every render,
-and works offline). These ~707 icons are **shipped in the repo**. If an icon is
+and works offline). These ~719 icons are **shipped in the repo**. If an icon is
 missing locally the UI automatically falls back to the wiki URL.
 
 Regenerate / refresh them (e.g. after swapping the master list for a new region)
@@ -181,7 +181,7 @@ backend/
   data/cat_guide_master.json
   tests/            # 44 tests + fixtures (sample banners + 2 screenshots)
 frontend/           # Vite + React (4-tab UI)
-  public/icons/     # ~707 unit icons (offline rendering)
+  public/icons/     # ~719 unit icons (offline rendering)
   public/top_icons/ # top-bar resource icons
 scrapers/           # godfat banners, Cat Guide list, and icon downloader
 DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
