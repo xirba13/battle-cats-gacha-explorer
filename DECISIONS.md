@@ -107,8 +107,12 @@ building the Battle Cats Optimal-Pull Path Tracker.
 
 ## M3/M4 — Persistence, API, UI
 
-- **Owned state keyed by (region, global_index)** so the master list stays
-  region-swappable. Resources/seed/region live in a `settings` k/v table.
+- **Owned state keyed by stable `(region, uid)`.** `global_index` is only the
+  current Cat Guide layout position and can shift when a unit is inserted.
+  Manual toggles, screenshot results, and followed paths are converted to the
+  unit's stable in-game `uid` before persistence. Resources/seed/region live in
+  a `settings` k/v table. A legacy positional `owned` table is reset on upgrade
+  because old positions cannot be translated safely after the guide changes.
 - **Targets are godfat names, not master names.** The pathfinder matches target
   strings against the unit names in the roll tables (which are godfat's spelling),
   so `compute_targets` keeps the godfat name as the target and only uses the

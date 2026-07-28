@@ -47,12 +47,12 @@ export default function CatGuide({ master, applyOwned, reloadState, setError, pe
 
   const toggle = async (u) => {
     const next = !u.owned;
-    applyOwned([u.global_index], next); // optimistic
+    applyOwned([u.uid], next); // optimistic
     try {
-      await api.toggleOwned(u.global_index, next);
+      await api.toggleOwned(u.uid, next);
       reloadState();
     } catch (e) {
-      applyOwned([u.global_index], u.owned); // revert
+      applyOwned([u.uid], u.owned); // revert
       setError(e.message);
     }
   };
@@ -115,7 +115,7 @@ export default function CatGuide({ master, applyOwned, reloadState, setError, pe
                 const pend = pending && pending[u.global_index];
                 return (
                   <button
-                    key={u.global_index}
+                    key={u.uid}
                     className={
                       "tile " +
                       (u.owned ? "owned " : "locked ") +

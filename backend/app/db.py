@@ -2,8 +2,9 @@
 of followed paths. The master unit list is static data (cat_guide_master.json),
 not stored here — only per-player mutable state lives in the DB.
 
-Owned state is keyed by (region, global_index) so the master list stays
-swappable per region (see DECISIONS.md).
+Owned state is keyed by (region, uid), where uid is the stable in-game unit ID.
+Cat Guide positions may change when units are inserted, so they are never
+persisted as ownership identifiers.
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 CREATE TABLE IF NOT EXISTS owned (
-    region       TEXT NOT NULL,
-    global_index INTEGER NOT NULL,
-    PRIMARY KEY (region, global_index)
+    region TEXT NOT NULL,
+    uid    INTEGER NOT NULL,
+    PRIMARY KEY (region, uid)
 );
 
 CREATE TABLE IF NOT EXISTS history (
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS history (
     seed_before  TEXT,
     seed_after   TEXT,
     solution     TEXT NOT NULL,   -- JSON of the followed Solution
-    units_added  TEXT NOT NULL,   -- JSON list of {name, global_index|null}
+    units_added  TEXT NOT NULL,   -- JSON list of {name, uid|null}
     cost         TEXT NOT NULL,   -- JSON resource dict
     resources_after TEXT          -- JSON resource dict
 );
@@ -52,7 +53,24 @@ class Database:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
+        self._prepare_owned_uid_schema()
         self._conn.commit()
+
+    def _prepare_owned_uid_schema(self) -> None:
+        """Upgrade the owned table shape without carrying ambiguous positions."""
+        columns = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(owned)")
+        }
+        if "global_index" not in columns:
+            return
+        # A position from an older guide cannot be translated safely after units
+        # have been inserted. Reset only the owned table; settings/history remain.
+        self._conn.execute("DROP TABLE owned")
+        self._conn.execute(
+            "CREATE TABLE owned ("
+            "region TEXT NOT NULL, uid INTEGER NOT NULL, "
+            "PRIMARY KEY (region, uid))"
+        )
 
     def close(self):
         self._conn.close()
@@ -95,34 +113,34 @@ class Database:
     def get_owned(self, region: Optional[str] = None) -> set[int]:
         region = region or self.get_region()
         rows = self._conn.execute(
-            "SELECT global_index FROM owned WHERE region=?", (region,)
+            "SELECT uid FROM owned WHERE region=?", (region,)
         ).fetchall()
-        return {r["global_index"] for r in rows}
+        return {r["uid"] for r in rows}
 
-    def set_owned(self, global_index: int, owned: bool, region: Optional[str] = None) -> None:
+    def set_owned(self, uid: int, owned: bool, region: Optional[str] = None) -> None:
         region = region or self.get_region()
         if owned:
             self._conn.execute(
-                "INSERT OR IGNORE INTO owned(region, global_index) VALUES(?, ?)",
-                (region, global_index),
+                "INSERT OR IGNORE INTO owned(region, uid) VALUES(?, ?)",
+                (region, uid),
             )
         else:
             self._conn.execute(
-                "DELETE FROM owned WHERE region=? AND global_index=?",
-                (region, global_index),
+                "DELETE FROM owned WHERE region=? AND uid=?",
+                (region, uid),
             )
         self._conn.commit()
 
-    def set_owned_bulk(self, indices, owned: bool, region: Optional[str] = None) -> None:
+    def set_owned_bulk(self, uids, owned: bool, region: Optional[str] = None) -> None:
         region = region or self.get_region()
-        data = [(region, int(i)) for i in indices]
+        data = [(region, int(uid)) for uid in uids]
         if owned:
             self._conn.executemany(
-                "INSERT OR IGNORE INTO owned(region, global_index) VALUES(?, ?)", data
+                "INSERT OR IGNORE INTO owned(region, uid) VALUES(?, ?)", data
             )
         else:
             self._conn.executemany(
-                "DELETE FROM owned WHERE region=? AND global_index=?", data
+                "DELETE FROM owned WHERE region=? AND uid=?", data
             )
         self._conn.commit()
 

@@ -36,6 +36,7 @@ export default function ScreenshotImport({ master, applyOwned, reloadState, goTo
 
   // Apply detected unlocked tiles as owned (and locked as not-owned) to the DB.
   const applyDetection = async (mode) => {
+    const uidByIndex = new Map(master.units.map((u) => [u.global_index, u.uid]));
     const ownIdx = detected
       .filter((c) => c.state === "unlocked" && c.global_index != null)
       .map((c) => c.global_index);
@@ -44,12 +45,14 @@ export default function ScreenshotImport({ master, applyOwned, reloadState, goTo
       .map((c) => c.global_index);
     try {
       if (ownIdx.length) {
-        await api.bulkOwned(ownIdx, true);
-        applyOwned(ownIdx, true);
+        const ownUids = ownIdx.map((i) => uidByIndex.get(i)).filter((uid) => uid != null);
+        await api.bulkOwned(ownUids, true);
+        applyOwned(ownUids, true);
       }
       if (mode === "both" && lockIdx.length) {
-        await api.bulkOwned(lockIdx, false);
-        applyOwned(lockIdx, false);
+        const lockUids = lockIdx.map((i) => uidByIndex.get(i)).filter((uid) => uid != null);
+        await api.bulkOwned(lockUids, false);
+        applyOwned(lockUids, false);
       }
       await reloadState();
       goToGuide();

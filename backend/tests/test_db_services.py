@@ -2,6 +2,7 @@
 including the "I followed this path" workflow."""
 
 import os
+import sqlite3
 
 import pytest
 
@@ -54,6 +55,26 @@ def test_owned_is_per_region(db):
     assert db.get_owned() == {10}        # original region preserved
 
 
+def test_legacy_positional_owned_rows_are_not_reused(tmp_path):
+    path = tmp_path / "legacy.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE owned (region TEXT NOT NULL, global_index INTEGER NOT NULL, "
+        "PRIMARY KEY (region, global_index))"
+    )
+    conn.execute("INSERT INTO owned VALUES ('BCEN (English)', 123)")
+    conn.commit()
+    conn.close()
+
+    migrated = Database(str(path))
+    assert migrated.get_owned("BCEN (English)") == set()
+    columns = {
+        row["name"] for row in migrated._conn.execute("PRAGMA table_info(owned)")
+    }
+    assert columns == {"region", "uid"}
+    migrated.close()
+
+
 def _linear_banner(units, name="B", btype=pathfinder.BANNER_NORMAL):
     rolls = {f"{i+1}A": {"unit": u} for i, u in enumerate(units)}
     return pathfinder.Banner(name=name, rolls=rolls, type=btype)
@@ -62,8 +83,8 @@ def _linear_banner(units, name="B", btype=pathfinder.BANNER_NORMAL):
 def test_compute_targets_excludes_owned(master):
     # Use real master names so matching works.
     banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
-    cat_idx = master.index_for_name("Cat")
-    report = services.compute_targets([banner], master, owned={cat_idx})
+    cat_uid = master.uid_for_name("Cat")
+    report = services.compute_targets([banner], master, owned={cat_uid})
     assert "Cat" not in report.targets
     assert "Tank Cat" in report.targets and "Axe Cat" in report.targets
 
@@ -99,9 +120,9 @@ def test_followed_path_marks_owned_and_decrements(db, master):
     # Every pulled unit (full draw) is now owned, not just targets.
     pulled_names = [u for a in sol["actions"] for u in a["units_pulled"]]
     for name in pulled_names:
-        idx = master.index_for_name(name)
-        if idx is not None:
-            assert idx in db.get_owned()
+        uid = master.uid_for_name(name)
+        if uid is not None:
+            assert uid in db.get_owned()
 
     # Resources decremented by cost.
     assert db.get_resources()["rare_tickets"] == 10 - sol["cost"]["rare_tickets"]
@@ -115,11 +136,11 @@ def test_followed_path_marks_owned_and_decrements(db, master):
 
 def test_followed_path_counts_only_new_units(db, master):
     # Pre-own "Cat"; the path pulls Cat (already owned) + two targets.
-    cat_idx = master.index_for_name("Cat")
-    db.set_owned(cat_idx, True)
+    cat_uid = master.uid_for_name("Cat")
+    db.set_owned(cat_uid, True)
     db.set_resources({"rare_tickets": 10})
     banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
-    result = services.run_search([banner], master, owned={cat_idx},
+    result = services.run_search([banner], master, owned={cat_uid},
                                  resources={"rare_tickets": 10}, max_solutions=1)
     sol = result["solutions"][0]
 
@@ -147,13 +168,14 @@ def test_api_smoke(tmp_path, monkeypatch):
     state = client.get("/api/state").json()
     assert "disclaimer" in state and state["owned_count"] == 0
 
-    r = client.post("/api/owned/toggle", json={"global_index": 3, "owned": True})
+    unit = client.get("/api/master").json()["units"][3]
+    r = client.post("/api/owned/toggle", json={"uid": unit["uid"], "owned": True})
     assert r.json()["owned_count"] == 1
 
     m = client.get("/api/master").json()
     assert m["meta"]["total"] == len(m["units"])
     assert len(m["units"]) >= 744
-    owned_unit = next(u for u in m["units"] if u["global_index"] == 3)
+    owned_unit = next(u for u in m["units"] if u["uid"] == unit["uid"])
     assert owned_unit["owned"] is True
 
     r = client.put("/api/resources", json={"rare_tickets": 5, "cat_food": 1500,

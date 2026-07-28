@@ -130,10 +130,10 @@ export default function PathFinder({ state, master, applyOwned, reloadState, set
     try {
       const res = await api.followed(sol, seed);
       // Mark all pulled units owned in the local master view.
-      const idx = (sol.units_pulled_all || [])
-        .map((u) => u.global_index)
-        .filter((i) => i != null);
-      applyOwned(idx, true);
+      const uids = (sol.units_pulled_all || [])
+        .map((u) => u.uid)
+        .filter((uid) => uid != null);
+      applyOwned(uids, true);
       // Discard all displayed paths — they are based on the now-spent seed.
       setResult(null);
       setEvents(null);

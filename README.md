@@ -55,6 +55,10 @@ docker compose up --build
 - Backend API: http://localhost:8000  (docs at `/docs`)
 
 State (SQLite DB, godfat cache, logs) is persisted in `backend/var/`.
+Owned units are stored by stable in-game unit ID, not Cat Guide position, so
+future guide insertions cannot shift an existing collection. Upgrading from a
+legacy positional database resets only its owned-unit table; other settings and
+history remain intact.
 
 ## Resetting / deleting your data
 

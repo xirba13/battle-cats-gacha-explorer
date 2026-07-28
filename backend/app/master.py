@@ -1,8 +1,8 @@
 """Loader for the static master Cat Guide list (cat_guide_master.json).
 
 Region-swappable: the default file is BCEN; other regions can be dropped in as
-`cat_guide_master_<region>.json` next to it. The in-game Cat Guide order differs
-per region, so owned-state is keyed by (region, global_index) in the DB.
+`cat_guide_master_<region>.json` next to it. Ownership is keyed by each unit's
+stable uid; global_index is used only for the current guide layout.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ class MasterData:
         self.units: list[dict] = payload["units"]
         self.region: str = self.meta.get("region", "BCEN (English)")
         self.by_index: dict[int, dict] = {u["global_index"]: u for u in self.units}
+        self.by_uid: dict[int, dict] = {u["uid"]: u for u in self.units}
         self.matcher = NameMatcher(self.units)
 
     def with_owned(self, owned: set[int]) -> list[dict]:
@@ -33,13 +34,17 @@ class MasterData:
         out = []
         for u in self.units:
             d = dict(u)
-            d["owned"] = u["global_index"] in owned
+            d["owned"] = u["uid"] in owned
             out.append(d)
         return out
 
     def index_for_name(self, godfat_name: str):
         unit = self.matcher.match(godfat_name)
         return unit["global_index"] if unit else None
+
+    def uid_for_name(self, godfat_name: str):
+        unit = self.matcher.match(godfat_name)
+        return unit["uid"] if unit else None
 
 
 def discover_regions() -> dict[str, str]:

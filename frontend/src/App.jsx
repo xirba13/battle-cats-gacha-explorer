@@ -41,14 +41,14 @@ export default function App() {
   }, [loadState, loadMaster]);
 
   // Optimistically update owned flags in the loaded master without a full reload.
-  const applyOwned = useCallback((indices, owned) => {
+  const applyOwned = useCallback((uids, owned) => {
     setMaster((m) => {
       if (!m) return m;
-      const set = new Set(indices);
+      const set = new Set(uids);
       return {
         ...m,
         units: m.units.map((u) =>
-          set.has(u.global_index) ? { ...u, owned } : u
+          set.has(u.uid) ? { ...u, owned } : u
         ),
       };
     });

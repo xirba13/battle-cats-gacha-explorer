@@ -69,12 +69,12 @@ class RegionIn(BaseModel):
 
 
 class ToggleIn(BaseModel):
-    global_index: int
+    uid: int
     owned: bool
 
 
 class BulkOwnedIn(BaseModel):
-    indices: list[int]
+    uids: list[int]
     owned: bool
 
 
@@ -145,15 +145,15 @@ def get_master():
 
 @app.post("/api/owned/toggle")
 def toggle_owned(body: ToggleIn):
-    db.set_owned(body.global_index, body.owned)
-    return {"global_index": body.global_index, "owned": body.owned,
+    db.set_owned(body.uid, body.owned)
+    return {"uid": body.uid, "owned": body.owned,
             "owned_count": len(db.get_owned())}
 
 
 @app.post("/api/owned/bulk")
 def bulk_owned(body: BulkOwnedIn):
-    db.set_owned_bulk(body.indices, body.owned)
-    return {"updated": len(body.indices), "owned_count": len(db.get_owned())}
+    db.set_owned_bulk(body.uids, body.owned)
+    return {"updated": len(body.uids), "owned_count": len(db.get_owned())}
 
 
 @app.post("/api/owned/clear")

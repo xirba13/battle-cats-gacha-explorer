@@ -22,9 +22,9 @@ async function req(method, path, body) {
 export const api = {
   state: () => req("GET", "/api/state"),
   master: () => req("GET", "/api/master"),
-  toggleOwned: (global_index, owned) =>
-    req("POST", "/api/owned/toggle", { global_index, owned }),
-  bulkOwned: (indices, owned) => req("POST", "/api/owned/bulk", { indices, owned }),
+  toggleOwned: (uid, owned) =>
+    req("POST", "/api/owned/toggle", { uid, owned }),
+  bulkOwned: (uids, owned) => req("POST", "/api/owned/bulk", { uids, owned }),
   clearOwned: () => req("POST", "/api/owned/clear"),
   setResources: (r) => req("PUT", "/api/resources", r),
   setSeed: (seed) => req("PUT", "/api/seed", { seed }),
