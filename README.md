@@ -37,7 +37,7 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
 - **Nothing is stored on any server.** Your owned units, seed, and resources are
   encoded in the page URL — bookmark it (or copy your code) to keep them.
 - **Region / version:** **BCEN (English) only**, unit list current as of game
-  **version 15.5.0**. The master list is region-swappable (see
+  **version 15.6.0**. The master list is region-swappable (see
   [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
 ## Your data & privacy
@@ -140,7 +140,7 @@ backend/                # stateless FastAPI service (no DB, no disk writes)
     master.py       # region-swappable master loader
     services.py     # targets, search wiring, stateless followed-path
     main.py         # FastAPI app (/api/master, /api/events, /api/search, /api/followed)
-  data/cat_guide_master.json   # BCEN unit list (game v15.5.0), keyed by stable uid
+  data/cat_guide_master.json   # BCEN unit list (game v15.6.0), keyed by stable uid
   tests/            # 41 tests + fixtures (sample banners + event list)
 frontend/           # Vite + React (3-tab UI)
   src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
