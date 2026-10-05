@@ -41,6 +41,20 @@ TAB_ORDER = ["English_Version", "Japanese_Version", "Korean_Version", "Taiwanese
 # Cat Guide rarity label -> the label godfat uses
 RARITY_GODFAT = {"Uber Super Rare": "Uber Rare", "Legendary": "Legend Rare"}
 
+# Owned codes use stable unit ids, never the Cat Guide display position.
+# Ancient Eggs share a placeholder icon, so their N-code gets a reserved range.
+EGG_UID_BASE = 100_000
+EGG_RE = re.compile(r"Ancient Egg:\s*N(\d+)", re.IGNORECASE)
+UNIT_ID_RE = re.compile(r"Uni(\d+)")
+
+
+def stable_uid(name: str, icon: str):
+    egg = EGG_RE.search(name)
+    if egg:
+        return EGG_UID_BASE + int(egg.group(1))
+    unit = UNIT_ID_RE.search(icon or "")
+    return int(unit.group(1)) if unit else None
+
 UNIT_RE = re.compile(
     r'<a href="https://battlecats\.miraheze\.org/wiki/[^"]+"\s+title="([^"]+)">'
     r'<img[^>]*src="([^"]*?/(?:\d+px-)?(Uni[^"/]+\.png))"',
@@ -102,13 +116,18 @@ def parse(section: str):
         rar_m = RARITY_RE.search(chunk)
         rarity = html.unescape(rar_m.group(1).strip()) if rar_m else "Unknown"
         for slot, (name, url, icon) in enumerate(UNIT_RE.findall(chunk)):
+            name = html.unescape(name).strip()
+            uid = stable_uid(name, icon)
+            if uid is None:
+                sys.exit(f"Could not derive a stable unit id for {name!r} ({icon!r}).")
             units.append({
                 "global_index": gidx,
+                "uid": uid,
                 "page": i + 1,
                 "slot": slot,
                 "row": slot // 6,
                 "col": slot % 6,
-                "name": html.unescape(name).strip(),
+                "name": name,
                 "rarity_guide": rarity,
                 "rarity_godfat": RARITY_GODFAT.get(rarity, rarity),
                 "icon": icon,
@@ -124,12 +143,33 @@ def main():
     src.add_argument("--url", help="Live Cat Guide URL (battlecats.miraheze.org/wiki/Cat_Guide)")
     src.add_argument("--input", help="Path to a saved .html or .mhtml of the Cat Guide page")
     ap.add_argument("--region", default="en", choices=REGION_TAB.keys(), help="Version tab to parse (default: en)")
+    ap.add_argument("--game-version", help="Game version represented by this guide, e.g. 15.6.1")
+    ap.add_argument("--previous", help="Existing master JSON; preserves its icon fallback URLs by stable uid")
     ap.add_argument("--output", default="cat_guide_master.json", help="Output JSON path")
     args = ap.parse_args()
 
     content = load_source(args)
     section = slice_region(content, args.region)
     units, pages = parse(section)
+
+    uids = [unit["uid"] for unit in units]
+    if len(uids) != len(set(uids)):
+        sys.exit("Duplicate stable unit ids found; refusing to write the master list.")
+
+    previous_by_uid = {}
+    if args.previous:
+        with open(args.previous, "r", encoding="utf-8") as f:
+            previous = json.load(f)
+        for old in previous.get("units", []):
+            uid = old.get("uid")
+            if uid is None:
+                uid = stable_uid(old.get("name", ""), old.get("icon", ""))
+            if uid is not None:
+                previous_by_uid[uid] = old
+        for unit in units:
+            old = previous_by_uid.get(unit["uid"])
+            if old and not unit["icon_url"]:
+                unit["icon_url"] = old.get("icon_url")
 
     out = {
         "_meta": {
@@ -142,6 +182,8 @@ def main():
         },
         "units": units,
     }
+    if args.game_version:
+        out["_meta"]["game_version"] = args.game_version
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
