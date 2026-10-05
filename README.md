@@ -1,7 +1,7 @@
 # Battle Cats Gacha Explorer
 
 A web app that helps a Battle Cats player find the **most resource-efficient pull
-path** to the units they don't yet own, using godfat seed-tracking data. Updated up to v15.6.0
+path** to the units they don't yet own, using godfat seed-tracking data. Updated up to v15.6.1
 
 > ⚠️ **Experimental and not fully tested.** Every path the app shows is
 > re-simulated against the parsed godfat data before display, but **always
@@ -145,7 +145,7 @@ against two real screenshots at different resolutions.
 
 The Cat Guide tiles render from a locally-served icon set in
 `frontend/public/icons/` (so the app doesn't hit the wiki CDN on every render,
-and works offline). These ~719 icons are **shipped in the repo**. If an icon is
+and works offline). These ~723 icons are **shipped in the repo**. If an icon is
 missing locally the UI automatically falls back to the wiki URL.
 
 Regenerate / refresh them (e.g. after swapping the master list for a new region)
@@ -163,11 +163,13 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
   (or `--out banners.json` to dump parsed tables; reuses the app's polite,
   cached, rate-limited client).
 - **Master Cat Guide list** (region-swappable): `python scrapers/update_cat_guide.py
-  --url https://battlecats.miraheze.org/wiki/Cat_Guide --region en --output
+  --url https://battlecats.miraheze.org/wiki/Cat_Guide --region en
+  --game-version 15.6.1 --previous backend/data/cat_guide_master.json --output
   backend/data/cat_guide_master.json` (or, if Miraheze blocks the bot, Save the
-  page in your browser and pass it with `--input Cat_Guide.html`). Drop a
-  `cat_guide_master_<region>.json` into `backend/data/` and the app will offer
-  that region in the top-bar selector.
+  page in your browser and pass it with `--input Cat_Guide.html`). Stable UIDs
+  are derived from each unit's game ID, and existing icon fallback URLs are
+  retained when passing `--previous`. Drop a `cat_guide_master_<region>.json`
+  into `backend/data/` and the app will offer that region in the top-bar selector.
 
 ## Project layout
 
@@ -185,7 +187,7 @@ backend/
   data/cat_guide_master.json
   tests/            # 44 tests + fixtures (sample banners + 2 screenshots)
 frontend/           # Vite + React (4-tab UI)
-  public/icons/     # ~719 unit icons (offline rendering)
+  public/icons/     # ~723 unit icons (offline rendering)
   public/top_icons/ # top-bar resource icons
 scrapers/           # godfat banners, Cat Guide list, and icon downloader
 DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
