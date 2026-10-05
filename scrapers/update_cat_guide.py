@@ -146,6 +146,8 @@ def main():
     src.add_argument("--url", help="Live Cat Guide URL (battlecats.miraheze.org/wiki/Cat_Guide)")
     src.add_argument("--input", help="Path to a saved .html or .mhtml of the Cat Guide page")
     ap.add_argument("--region", default="en", choices=REGION_TAB.keys(), help="Version tab to parse (default: en)")
+    ap.add_argument("--game-version", help="Game version represented by this guide, e.g. 15.6.1")
+    ap.add_argument("--previous", help="Existing master JSON; preserves its icon fallback URLs by stable uid")
     ap.add_argument("--output", default="cat_guide_master.json", help="Output JSON path")
     args = ap.parse_args()
 
@@ -167,9 +169,24 @@ def main():
         else:
             seen[uid] = u["name"]
     if missing:
-        print(f"WARNING: {len(missing)} units have no derivable uid:", missing[:10])
+        sys.exit(f"{len(missing)} units have no derivable uid: {missing[:10]}")
     if collisions:
-        print(f"WARNING: {len(collisions)} uid collisions (need a disambiguation rule):", collisions[:10])
+        sys.exit(f"{len(collisions)} uid collisions need a disambiguation rule: {collisions[:10]}")
+
+    previous_by_uid = {}
+    if args.previous:
+        with open(args.previous, "r", encoding="utf-8") as f:
+            previous = json.load(f)
+        for old in previous.get("units", []):
+            uid = old.get("uid")
+            if uid is None:
+                uid = compute_uid(old.get("name", ""), old.get("icon", ""))
+            if uid is not None:
+                previous_by_uid[uid] = old
+        for unit in units:
+            old = previous_by_uid.get(unit["uid"])
+            if old and not unit["icon_url"]:
+                unit["icon_url"] = old.get("icon_url")
 
     out = {
         "_meta": {
@@ -182,6 +199,8 @@ def main():
         },
         "units": units,
     }
+    if args.game_version:
+        out["_meta"]["game_version"] = args.game_version
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 

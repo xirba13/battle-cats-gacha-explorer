@@ -37,7 +37,7 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
 - **Nothing is stored on any server.** Your owned units, seed, and resources are
   encoded in the page URL — bookmark it (or copy your code) to keep them.
 - **Region / version:** **BCEN (English) only**, unit list current as of game
-  **version 15.6.0**. The master list is region-swappable (see
+  **version 15.6.1**. The master list is region-swappable (see
   [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
 ## Your data & privacy
@@ -95,7 +95,7 @@ existing units.
 
 The Cat Guide tiles render from a locally-served icon set in
 `frontend/public/icons/` (so the app doesn't hit the wiki CDN on every render,
-and works offline). These ~719 icons are **shipped in the repo**. If an icon is
+and works offline). These ~723 icons are **shipped in the repo**. If an icon is
 missing locally the UI automatically falls back to the wiki URL.
 
 Regenerate / refresh them (e.g. after swapping the master list for a new region)
@@ -113,11 +113,13 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
   (or `--out banners.json` to dump parsed tables; reuses the app's polite,
   cached, rate-limited client).
 - **Master Cat Guide list** (region-swappable): `python scrapers/update_cat_guide.py
-  --url https://battlecats.miraheze.org/wiki/Cat_Guide --region en --output
+  --url https://battlecats.miraheze.org/wiki/Cat_Guide --region en
+  --game-version 15.6.1 --previous backend/data/cat_guide_master.json --output
   backend/data/cat_guide_master.json` (or, if Miraheze blocks the bot, Save the
-  page in your browser and pass it with `--input Cat_Guide.html`). Drop a
-  `cat_guide_master_<region>.json` into `backend/data/` and the app will offer
-  that region in the top-bar selector.
+  page in your browser and pass it with `--input Cat_Guide.html`). Stable UIDs
+  are derived from each unit's game ID, and existing icon fallback URLs are
+  retained when passing `--previous`. Drop a `cat_guide_master_<region>.json`
+  into `backend/data/` and the app will offer that region in the top-bar selector.
 
 ### Updating to a newer game version
 
@@ -140,11 +142,11 @@ backend/                # stateless FastAPI service (no DB, no disk writes)
     master.py       # region-swappable master loader
     services.py     # targets, search wiring, stateless followed-path
     main.py         # FastAPI app (/api/master, /api/events, /api/search, /api/followed)
-  data/cat_guide_master.json   # BCEN unit list (game v15.6.0), keyed by stable uid
+  data/cat_guide_master.json   # BCEN unit list (game v15.6.1), keyed by stable uid
   tests/            # 41 tests + fixtures (sample banners + event list)
 frontend/           # Vite + React (3-tab UI)
   src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
-  public/icons/     # ~719 unit icons
+  public/icons/     # ~723 unit icons
   public/top_icons/ # top-bar resource icons
 scrapers/           # godfat banners, Cat Guide list, and icon downloader
 DECISIONS.md        # assumptions, godfat URL-scheme findings, banner mechanics
