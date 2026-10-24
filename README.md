@@ -86,8 +86,9 @@ and saved in your browser (localStorage), so:
    pick how its order ranks paths.
 4. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
    (special Platinum/Legend banners are pre-selected when you have the tickets),
-   choose your wishlist (and tick its units) or every unit you don't own,
-   then *Find optimal paths*. The tables go as deep as your resources can pull
+   choose your wishlist (and tick its units) or every unit you don't own
+   (optionally: **never skip a Legend Rare**, so a path that reaches one pulls
+   it), then *Find optimal paths*. The tables go as deep as your resources can pull
    (about one row per pull, so the best paths can use them all; you can type your
    own depth). The search runs in the background in your browser:
    usually well under a second; a big one (many banners, no wishlist) stops after

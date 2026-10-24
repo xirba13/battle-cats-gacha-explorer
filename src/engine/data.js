@@ -47,6 +47,12 @@ export class Dataset {
     return this.idByName.get(name) ?? null;
   }
 
+  // The rarity (RARE…LEGEND) of a name in the tables, or null.
+  rarityOf(name) {
+    const id = this.catIdOf(name);
+    return id === null ? null : this.rarity.get(id) ?? null;
+  }
+
   // godfat's "Upcoming" list: running now, then starting later.
   upcoming(today = localToday()) {
     const ongoing = [];

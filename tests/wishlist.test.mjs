@@ -1,15 +1,19 @@
-// Wishlists (src/wishlists.js), searching for one (engine/services.js), and
-// saved plans (services planOf / planRequest, src/plancode.js), on the data
-// recorded in tests/fixtures/golden.json.
+// Wishlists (src/wishlists.js), searching for one (engine/services.js), never
+// skipping a Legend Rare, and saved plans (services planOf / planRequest,
+// src/plancode.js), on the data recorded in tests/fixtures/golden.json.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Dataset, catOfUid } from "../src/engine/data.js";
+import { Dataset, catOfUid, ingest } from "../src/engine/data.js";
 import { normalize } from "../src/engine/names.js";
-import { MasterData, eventsRequest, followedRequest, planOf, planRequest, searchRequest } from "../src/engine/services.js";
+import * as pf from "../src/engine/pathfinder.js";
+import { LEGEND } from "../src/engine/rolls.js";
+import {
+  MasterData, eventsRequest, followedRequest, legendRareSpots, planOf, planRequest, searchRequest,
+} from "../src/engine/services.js";
 import { decodePlan, encodePlan } from "../src/plancode.js";
 import * as wl from "../src/wishlists.js";
 
@@ -149,14 +153,80 @@ test("a broken plan code is no plan", () => {
   assert.equal(decodePlan(encodePlan({ ...planOf(r, r.solutions[0]), steps: [2 * EVENTS.length], savedOn: "2026-10-24" })), null);
 });
 
+// --- Never skipping a Legend Rare ---------------------------------------------------
+
+const PLATINUM = "2026-10-16_1071";
+const LEGEND_CAPSULE = "2026-10-16_1072";
+const NORMAL = "2026-10-20_1070";
+const tablesFor = (ids, count) => ingest(dataset, "139026851", count, { eventIds: ids, today: TODAY }).banners;
+
+// The Legend Rare spots a path skips: pulled without a Legend Rare, or taken
+// by a guaranteed 11-draw's uber (walked like verifySolution).
+function skippedSpots(banners, sol, spots) {
+  let pos = "1A";
+  let last = null;
+  const out = [];
+  for (const act of sol.actions) {
+    const rolls = banners[act.banner_index].rolls;
+    const pulls = act.action_type === pf.ACTION_GUARANTEED_11 ? 10 : act.action_type === pf.ACTION_MULTI_11 ? 11 : 1;
+    for (let k = 0; k < pulls; k++) {
+      const [unit, next] = pf.getNextPosNormal(pos, null, rolls, last);
+      if (spots.at.has(pos) && !spots.keep(unit)) out.push(pos);
+      [pos, last] = [next, unit];
+    }
+    if (act.action_type === pf.ACTION_GUARANTEED_11) {
+      if (spots.at.has(pos)) out.push(pos);
+      [pos, last] = [act.position_to, act.units_pulled.at(-1)];
+    }
+  }
+  return out;
+}
+
+test("Legend Rare spots: the searched banners', but not the Legend Capsule's", () => {
+  const isLR = (u) => dataset.rarityOf(u) === LEGEND;
+  const normal = legendRareSpots(dataset, tablesFor([NORMAL], 400));
+  assert.ok(normal.at.size > 0);
+  assert.ok([...normal.at].every((pos) => isLR(tablesFor([NORMAL], 400)[0].rolls[pos].unit)));
+  // The Capsule has plenty, but they don't count; the Platinum Capsule has none.
+  const capsule = tablesFor([LEGEND_CAPSULE], 400)[0];
+  assert.ok(Object.values(capsule.rolls).filter((c) => isLR(c.unit)).length > normal.at.size);
+  assert.equal(legendRareSpots(dataset, [capsule]).at.size, 0);
+  assert.equal(legendRareSpots(dataset, tablesFor([PLATINUM], 400)).at.size, 0);
+  // Any Legend Rare there counts as getting it, the Capsule's too.
+  assert.ok(normal.keep(Object.values(capsule.rolls).find((c) => isLR(c.unit)).unit));
+});
+
+test("never skipping a Legend Rare", () => {
+  // Mamoluga is cheapest from the Platinum Capsule at 342B, where the other
+  // banner has a Legend Rare; with the option, the path gets it further on.
+  const ids = [PLATINUM, NORMAL];
+  const body = { seed: "139026851", event_ids: ids, count: 400, resources: { rare_tickets: 420, platinum_tickets: 1 }, owned: [], wish: wishOf(["Mamoluga"]) };
+  const banners = tablesFor(ids, 400);
+  const spots = legendRareSpots(dataset, banners);
+  const free = searchRequest(dataset, master, body, { today: TODAY });
+  assert.deepEqual(skippedSpots(banners, free.solutions[0], spots), ["342B"]);
+  assert.equal(free.keep_legends, false);
+  const kept = searchRequest(dataset, master, { ...body, keep_legends: true }, { today: TODAY });
+  assert.equal(kept.keep_legends, true);
+  assert.ok(kept.solutions.length > 0);
+  for (const s of kept.solutions) {
+    assert.deepEqual(skippedSpots(banners, s, spots), []);
+    assert.ok(s.verified);
+  }
+  assert.deepEqual(kept.solutions[0].collected_units, ["Mamoluga"]);
+  assert.equal(kept.solutions[0].cost.rare_tickets, 353);
+  assert.equal(free.solutions[0].cost.rare_tickets, 339);
+});
+
 // --- Wishlist codes and changes ------------------------------------------------------
 
 const uids = new Set(master.units.map((u) => u.uid));
 const listA = { name: "Ubers 🐱 first", ranking: "most", units: [{ uid: 824, on: true }, { uid: 32, on: false }, { uid: 769, on: true }] };
 
 test("all the wishlists come back from their code", () => {
-  const w = { lists: [wl.newList(), listA], open: 1, every: true };
+  const w = { lists: [wl.newList(), listA], open: 1, every: true, keepLegends: true };
   assert.deepEqual(wl.decodeWishes(wl.encodeWishes(w), uids), w);
+  assert.deepEqual(wl.decodeWishes(wl.encodeWishes({ ...w, every: false }), uids), { ...w, every: false });
   // Nothing but an empty list is no code at all, and a broken code is empty.
   assert.equal(wl.encodeWishes(wl.emptyWishes()), "");
   assert.deepEqual(wl.decodeWishes("", uids), wl.emptyWishes());
@@ -192,7 +262,7 @@ test("a shared wishlist is added as an exact copy, once", () => {
   assert.deepEqual(named.wishes.lists[2], { ...listA, name: `${wl.DEFAULT_NAME} (2)`, ranking: "order" });
   assert.equal(wl.importList(named.wishes, { ...listA, name: "Anything" }).added, false);
   // With nothing but the empty starting list, the copy takes its place.
-  assert.deepEqual(wl.importList(wl.emptyWishes(), listA).wishes, { lists: [listA], open: 0, every: false });
+  assert.deepEqual(wl.importList(wl.emptyWishes(), listA).wishes, { lists: [listA], open: 0, every: false, keepLegends: false });
 });
 
 test("changing a wishlist", () => {

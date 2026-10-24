@@ -6,6 +6,7 @@
 import { catOfUid, ingest, uidOfCat } from "./data.js";
 import { NameMatcher, normalize } from "./names.js";
 import * as pathfinder from "./pathfinder.js";
+import { LEGEND } from "./rolls.js";
 
 export const DISCLAIMER =
   "This tool is experimental and not fully tested. Every path is re-simulated " +
@@ -165,11 +166,26 @@ function describe(banners, master, solutions) {
   };
 }
 
+// Never skip a Legend Rare: the spots where a searched banner has one, but
+// not the Legend Capsule (they're common there), and what counts as getting
+// it: a pull there that gives any Legend Rare (the Capsule's too).
+export function legendRareSpots(dataset, banners) {
+  const isLegend = (name) => dataset.rarityOf(name) === LEGEND;
+  const at = new Set();
+  for (const b of banners) {
+    if (b.type === pathfinder.BANNER_LEGEND) continue;
+    for (const [pos, cell] of Object.entries(b.rolls)) if (isLegend(cell.unit)) at.add(pos);
+  }
+  return { at, keep: isLegend };
+}
+
 // Run the path search on built banners; the result the page shows. With a
-// wishlist, `ranking` can rank paths by its order (see pathfinder.RANKINGS).
+// wishlist, `ranking` can rank paths by its order (see pathfinder.RANKINGS);
+// `noSkip`: units not to skip (see pathfinder.findPaths).
 export function runSearch(banners, master, owned, resources, {
   wishlist = null,
   ranking = pathfinder.RANK_COUNT,
+  noSkip = null,
   mode = pathfinder.MODE_RESOURCE_LIMIT,
   maxSteps = MAX_STEPS,
   maxSolutions = 20,
@@ -182,7 +198,7 @@ export function runSearch(banners, master, owned, resources, {
   const report = computeTargets(banners, master, owned, wishlist, { ordered: ranking !== pathfinder.RANK_COUNT });
   const stats = {};
   const solutions = pathfinder.findPaths(banners, report.targets, {
-    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, ranking, maxSteps, maxSolutions,
+    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, ranking, noSkip, maxSteps, maxSolutions,
     timeLimitMs, maxStates, onProgress, stats,
   });
   return {
@@ -265,7 +281,8 @@ function wishFor(dataset, wish) {
 // A search: build the selected banners for the seed, then find paths. The
 // targets: `body.wish` ({units: [{uid, on}], most wanted first, ranking}, from
 // the Wishlist tab: its ticked units), or `body.wishlist` (names, ranked by
-// count), or else every unit you don't own.
+// count), or else every unit you don't own. `body.keep_legends`: never skip a
+// Legend Rare (legendRareSpots).
 // Throws on a seed that isn't a number from 0 to 2^32 - 1.
 export function searchRequest(dataset, master, body, {
   today, timeLimitMs = null, maxStates = null, onProgress = null, maxSteps = MAX_STEPS,
@@ -283,6 +300,7 @@ export function searchRequest(dataset, master, body, {
   const result = runSearch(ingestion.banners, master, new Set(body.owned || []), resources, {
     wishlist,
     ranking,
+    noSkip: body.keep_legends ? legendRareSpots(dataset, ingestion.banners) : null,
     mode: body.mode ?? pathfinder.MODE_RESOURCE_LIMIT,
     maxSolutions: body.max_solutions ?? 20,
     maxSteps,
@@ -292,7 +310,7 @@ export function searchRequest(dataset, master, body, {
   });
   return {
     ...result, seed: body.seed, wishlist, ranking: wishlist ? ranking : pathfinder.RANK_COUNT, wish_ranks: ranks,
-    skipped: ingestion.skipped,
+    keep_legends: Boolean(body.keep_legends), skipped: ingestion.skipped,
     // What a saved plan needs to build these tables again.
     depth: count, event_ids: ingestion.banners.map((b) => b.eventId), resources,
     data: dataInfo(dataset), disclaimer: DISCLAIMER,

@@ -1,12 +1,50 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest changes (wishlists, deeper
-tables, the repo clean-up) first, then the webapp's sections in the order they
-happened, then the early
+building the Battle Cats Gacha Explorer: the latest changes (never skipping a
+Legend Rare, wishlists, deeper tables, the repo clean-up) first, then the
+webapp's sections in the order they happened, then the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Never skipping a Legend Rare
+
+The user asked for an option so a path never skips a Legend Rare, even one
+that isn't a target, except on the Legend Banner (the Legend Capsule).
+
+- **A Legend Rare spot is shared.** A cell's rarity comes from its position's
+  seed and the banner's rates, and every normal banner with a Legend Rare
+  leaves it the same top 0.3% (rare + supa + uber = 9970), so they all roll
+  one on the same rows, each its own (on the 2026-10-24 banners each has
+  exactly one in its pool). The Platinum Capsule (uber 100%) and the "Limited
+  Halloween Units" banners (7000 / 2500 / 500: no Legend Rare) give an uber
+  there. With the seeds tried, 3–5 such spots per 400 rows, both tracks.
+- **So a path skips one by** pulling the Platinum Capsule or a banner without
+  a Legend Rare on that spot, or by a guaranteed 11-draw whose uber lands on it
+  (godfat picks the uber with the 11th roll's seed, so it replaces that cell).
+  A pull there that gives any Legend Rare counts as not skipping it, the
+  Legend Capsule's included (it rolls one there too: its rates leave 5%).
+- **The Legend Capsule's spots don't count** (user request): about 1 in 20 of
+  its cells is a Legend Rare, and pulling them costs Legend tickets.
+- **A strict rule in the search** (`noSkip` in `findPaths`: those moves are
+  never made; `legendRareSpots` in services.js finds the spots). A target only
+  reachable by skipping one isn't offered.
+- **It costs nothing measurable** (7.5 s, 2.3 s and 13.1 s on the depth
+  benchmarks with it on, 7.5, 2.3 and 13.0 off). A first version looked up
+  every pull's position in a Set and was 3–11% slower; but a normal banner
+  with a Legend Rare can't skip one (its cell on every spot is its Legend
+  Rare), so now only the other banners' few cells on those spots are checked,
+  by identity.
+- **It changes real results:** on the recorded 2026-10-23 data with seed
+  139026851, every banner and 400 rows, the best path skipped the Legend Rare
+  at 191B (it pulled Hallowindy on a Halloween banner there); with the option
+  it doesn't, and collects 88 units instead of 89. The test case: Mamoluga
+  from the Platinum Capsule plus one normal banner is cheapest at 342B (339
+  tickets), a Legend Rare spot; with the option it's taken at a later spot
+  (353 tickets).
+- Kept with the Path Finder's other choices (a flag in the wishlists code), off
+  until ticked; Legend Rare pulls are tagged ✨ in a path's steps.
 
 ## Wishlists: priorities, several lists, saved and shared plans
 

@@ -29,9 +29,10 @@ export const MAX_NAME = 40;
 
 export const cleanName = (name) => String(name ?? "").trim().slice(0, MAX_NAME) || DEFAULT_NAME;
 export const newList = (name = DEFAULT_NAME) => ({ name: cleanName(name), ranking: DEFAULT_RANKING, units: [] });
-// `every`: the Path Finder searches every unit you don't own instead of the
-// open list.
-export const emptyWishes = () => ({ lists: [newList()], open: 0, every: false });
+// The Path Finder's choices are kept with the lists: `every`, it searches
+// every unit you don't own instead of the open list; `keepLegends`, its paths
+// never skip a Legend Rare.
+export const emptyWishes = () => ({ lists: [newList()], open: 0, every: false, keepLegends: false });
 
 // ---- one list (each returns a new list) ---------------------------------- //
 
@@ -68,6 +69,7 @@ function freeName(name, lists) {
 
 export const openList = (w, i) => ({ ...w, open: i, every: false });
 export const setEvery = (w, every) => ({ ...w, every });
+export const setKeepLegends = (w, keepLegends) => ({ ...w, keepLegends });
 export const changeOpen = (w, fn) => ({ ...w, lists: w.lists.map((l, i) => (i === w.open ? fn(l) : l)) });
 export const addList = (w, list) => ({ ...w, lists: [...w.lists, list], open: w.lists.length, every: false });
 
@@ -84,7 +86,7 @@ export function deleteList(w, i) {
 // the copy takes its place. {wishes, added, name}.
 export function importList(w, list) {
   const copy = { ...list, units: list.units.map((u) => ({ ...u })) };
-  if (isEmpty(w)) return { wishes: { lists: [copy], open: 0, every: false }, added: true, name: copy.name };
+  if (isEmpty(w)) return { wishes: { ...emptyWishes(), lists: [copy] }, added: true, name: copy.name };
   const same = w.lists.findIndex((l) => sameContent(l, list));
   if (same >= 0) return { wishes: openList(w, same), added: false, name: w.lists[same].name };
   const name = freeName(list.name, w.lists);
@@ -107,8 +109,9 @@ export const removeEverywhere = (w, uids) => {
 
 // ---- codes ---------------------------------------------------------------- //
 // base64url of: a format byte, then for all the lists the open one, flags
-// (1 = every unit) and the lists; for one list just that list. A list: its
-// name, ranking (a byte), then each unit as uid * 2 + (unticked ? 1 : 0).
+// (1 = every unit, 2 = never skip a Legend Rare) and the lists; for one list
+// just that list. A list: its name, ranking (a byte), then each unit as
+// uid * 2 + (unticked ? 1 : 0).
 
 const FMT_ALL = 1;
 const FMT_ONE = 2;
@@ -136,12 +139,13 @@ function readList(r, known) {
 }
 
 const isEmpty = (w) =>
-  w.lists.length === 1 && w.open === 0 && !w.every && sameList(w.lists[0], newList());
+  w.lists.length === 1 && w.open === 0 && !w.every && !w.keepLegends && sameList(w.lists[0], newList());
 
 // All the lists -> code ("" when there's nothing but an empty list).
 export function encodeWishes(w) {
   if (isEmpty(w)) return "";
-  const out = new ByteWriter().byte(FMT_ALL).uint(w.open).byte(w.every ? 1 : 0).uint(w.lists.length);
+  const flags = (w.every ? 1 : 0) | (w.keepLegends ? 2 : 0);
+  const out = new ByteWriter().byte(FMT_ALL).uint(w.open).byte(flags).uint(w.lists.length);
   for (const l of w.lists) writeList(out, l);
   return bytesToBase64url(out.toBytes());
 }
@@ -153,11 +157,11 @@ export function decodeWishes(code, known = null) {
     const r = new ByteReader(base64urlToBytes(code));
     if (r.byte() !== FMT_ALL) return emptyWishes();
     const open = r.uint();
-    const every = (r.byte() & 1) === 1;
+    const flags = r.byte();
     const lists = [];
     for (let n = r.uint(); n > 0; n--) lists.push(readList(r, known));
     if (!lists.length) return emptyWishes();
-    return { lists, open: Math.min(open, lists.length - 1), every };
+    return { lists, open: Math.min(open, lists.length - 1), every: (flags & 1) !== 0, keepLegends: (flags & 2) !== 0 };
   } catch {
     return emptyWishes();
   }

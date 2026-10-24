@@ -588,3 +588,6 @@ table.track .rank-tag {
   font-family: monospace;
   font-size: 12px;
 }
+.pf-keep-legends { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: 13px; cursor: pointer; }
+.pf-keep-legends input { margin-top: 2px; }
+.legend-tag { color: #0f6b6b; font-weight: 600; }

@@ -110,17 +110,17 @@ function action(bannerIndex, actionType, payment, from, to, units, targetsHit, a
 // One pull on a roll table
 // --------------------------------------------------------------------------- //
 
-// Resolve a single pull at `pos`: [unit, next position, note, seed after it].
-// If the unit equals the last one pulled and the cell has a dupe line, you get
-// that line's unit and jump where it says.
+// Resolve a single pull at `pos`: [unit, next position, note, seed after it,
+// the cell]. If the unit equals the last one pulled and the cell has a dupe
+// line, you get that line's unit and jump where it says.
 export function getNextPosNormal(pos, _hint, rolls, lastUnit) {
   const entry = rolls[pos];
-  if (!entry) return [null, null, null, null];
+  if (!entry) return [null, null, null, null, null];
   const unit = entry.unit ?? null;
   if (lastUnit && unit === lastUnit && "alt_unit" in entry) {
-    return [entry.alt_unit, entry.alt_next ?? null, "Duplicate", entry.alt_seed ?? null];
+    return [entry.alt_unit, entry.alt_next ?? null, "Duplicate", entry.alt_seed ?? null, entry];
   }
-  return [unit, `${parseInt(pos, 10) + 1}${pos[pos.length - 1]}`, "Normal", entry.unit_seed ?? null];
+  return [unit, `${parseInt(pos, 10) + 1}${pos[pos.length - 1]}`, "Normal", entry.unit_seed ?? null, entry];
 }
 
 // --------------------------------------------------------------------------- //
@@ -221,6 +221,10 @@ const SEP = "\u0001"; // can't appear in a unit name
 //     their ticket count.
 //   ranking: RANK_COUNT, or a wishlist's ranking (RANK_ORDER / RANK_MOST)
 //     with `targets` most wanted first.
+//   noSkip: {at: Set of positions, keep: unit -> bool}, or null: units a path
+//     mustn't skip (Legend Rares, say). A pull at one of those positions must
+//     give a unit `keep` accepts, and no 11-draw's guaranteed uber may take
+//     the place of one.
 //   maxSteps: search-iteration cap. timeLimitMs / maxStates: optional caps on
 //     time and on states kept (memory); the Python has neither. `stats.stopped`
 //     says which one stopped it early ("steps" / "time" / "states").
@@ -237,6 +241,7 @@ export function findPaths(banners, targets, {
   bannerLimits = null,
   mode = MODE_RESOURCE_LIMIT,
   ranking = RANK_COUNT,
+  noSkip = null,
   maxSteps = 2_000_000,
   maxSolutions = 50,
   startPos = "1A",
@@ -291,6 +296,22 @@ export function findPaths(banners, targets, {
   const rareTicketBudget = res0.rare_tickets;
   const withinCaps = (r) =>
     !resLimitMode || (r[0] <= caps[0] && r[1] <= caps[1] && r[2] <= caps[2] && r[3] <= caps[3]);
+  // Units not to skip: per banner, its cells at those spots that can give a
+  // unit `keep` doesn't accept (the cat, or its dupe line), or null if none.
+  // A banner with a kept unit on every spot (a normal banner's Legend Rare)
+  // then needs no check at all, and the others only an identity lookup.
+  const skipAt = noSkip ? noSkip.at : null;
+  const skipCellsOf = banners.map((b) => {
+    if (skipAt === null) return null;
+    const cells = new Set();
+    for (const p of skipAt) {
+      const cell = b.rolls[p];
+      if (cell && (!noSkip.keep(cell.unit) || ("alt_unit" in cell && !noSkip.keep(cell.alt_unit)))) cells.add(cell);
+    }
+    return cells.size ? cells : null;
+  });
+  // May a pull of `cell` (on a banner with these `cells`) give `unit`?
+  const keeps = (cells, cell, unit) => cells === null || !cells.has(cell) || noSkip.keep(unit);
 
   // visited[state key] = Pareto frontier of resource vectors reaching it. The
   // key: position, targets collected, last unit (numbered) and the limited
@@ -410,15 +431,16 @@ export function findPaths(banners, targets, {
 
   // An 11-draw from `pos`: 10 normal pulls, then the guaranteed uber `gUnit`
   // (guaranteed banner) or an 11th normal pull (gUnit null). Null if it runs
-  // past the table. `hits`: how many new targets it pulls.
-  const draw11 = (pos, last, rolls, gUnit, collected) => {
+  // past the table or skips a unit not to skip (`cells`: see skipCellsOf).
+  // `hits`: how many new targets it pulls.
+  const draw11 = (pos, last, rolls, gUnit, collected, cells) => {
     let hits = 0;
     let p = pos;
     let l = last;
     let c = collected;
     for (let i = gUnit ? 10 : 11; i > 0; i--) {
-      const [u, np] = getNextPosNormal(p, null, rolls, l);
-      if (!u || !np) return null;
+      const [u, np, , , cell] = getNextPosNormal(p, null, rolls, l);
+      if (!u || !np || !keeps(cells, cell, u)) return null;
       let isT;
       [c, isT] = applyUnit(u, c);
       if (isT) hits += 1;
@@ -426,6 +448,8 @@ export function findPaths(banners, targets, {
       l = u;
     }
     if (gUnit) {
+      // The guaranteed uber takes the place of the cat on the 11th spot.
+      if (skipAt !== null && skipAt.has(p)) return null;
       let isT;
       [c, isT] = applyUnit(gUnit, c);
       if (isT) hits += 1;
@@ -469,8 +493,9 @@ export function findPaths(banners, targets, {
     const newUsage = k < 0 ? usage : bump(usage, k);
 
     // --- single pull: rare tickets first, then cat food --------------------
+    const cells = skipCellsOf[bIdx];
     const [unit, nextP] = getNextPosNormal(pos, entry.unit, banner.rolls, last);
-    if (unit && nextP) {
+    if (unit && nextP && keeps(cells, entry, unit)) {
       const [newCollected, isTarget] = applyUnit(unit, collected);
       // A rare ticket still available must be used (no cat food on singles
       // while tickets remain).
@@ -488,7 +513,7 @@ export function findPaths(banners, targets, {
       // guaranteed cell here = the draw runs past the table: skip it.)
       const [gUnit, gNext] = guaranteedFor(entry, last);
       if (gUnit && gNext && withinCaps(res11)) {
-        const d = draw11(pos, last, banner.rolls, gUnit, collected);
+        const d = draw11(pos, last, banner.rolls, gUnit, collected, cells);
         const newKey = d && d.hits ? maskKey(d.collected) : mkey;
         if (d && admit(gNext, newKey, gUnit, newUsage, res11)) {
           push(gNext, d.collected, newKey, count + d.hits, gUnit, newUsage, res11, addStep(node, 2 * bIdx + 1));
@@ -496,7 +521,7 @@ export function findPaths(banners, targets, {
       }
     } else if (withinCaps(res11)) {
       // No guaranteed cells: a plain 11-roll is 11 normal pulls for 1500 food.
-      const d = draw11(pos, last, banner.rolls, null, collected);
+      const d = draw11(pos, last, banner.rolls, null, collected, cells);
       const newKey = d && d.hits ? maskKey(d.collected) : mkey;
       if (d && admit(d.next, newKey, d.last, newUsage, res11)) {
         push(d.next, d.collected, newKey, count + d.hits, d.last, newUsage, res11, addStep(node, 2 * bIdx + 1));
@@ -509,7 +534,7 @@ export function findPaths(banners, targets, {
     const { pos, collected, mkey, last, usage, res, node } = st;
     const [rt, cf, pt, lt] = res;
     const [unit, nextP] = getNextPosNormal(pos, entry.unit, banner.rolls, last);
-    if (!unit || !nextP) return;
+    if (!unit || !nextP || !keeps(skipCellsOf[bIdx], entry, unit)) return;
     const [newCollected, isTarget] = applyUnit(unit, collected);
     const k = slotOf[bIdx];
     const newUsage = k < 0 ? usage : bump(usage, k);

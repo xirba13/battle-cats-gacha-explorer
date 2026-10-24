@@ -84,6 +84,13 @@ export default function Instructions({ disclaimer }) {
           wishlist units to search for (each one says whether the picked banners can give it), and
           pick how to rank the paths. With nothing ticked, it searches for every unit you don't
           own.</li>
+        <li><b>Never skip a Legend Rare</b> (an option): Legend Rares come up on the same rows on every
+          normal banner that has one. With this ticked, a path that gets to such a row pulls a Legend
+          Rare there, even if it isn't a target: no Platinum Capsule pull there, no banner without a
+          Legend Rare, and no guaranteed 11-draw whose uber would take its place (an 11-draw's uber
+          replaces the 11th roll). The Legend Capsule's own Legend Rares don't count. It's a strict
+          rule: a target that can only be reached by skipping one isn't offered. Legend Rare pulls
+          are tagged ✨ in the steps.</li>
         <li><b>Depth</b> (how far down the roll tables go) is automatic: as deep as your
           resources can pull, about one row per pull, so the best paths can use them all.
           Type a number to change it; <b>Auto</b> switches back.</li>

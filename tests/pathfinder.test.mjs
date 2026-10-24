@@ -346,6 +346,38 @@ test("rankings: paths with as many targets, for as much, come in the wishlist's 
   assert.throws(() => pf.findPaths(banners, ["A"], { ranking: "nope" }), /Unknown ranking/);
 });
 
+// --- Units not to skip (never skipping a Legend Rare) ---------------------------
+
+const keepLR = (...spots) => ({ at: new Set(spots), keep: (u) => u === "LR" });
+
+test("no single pull may skip a unit not to skip", () => {
+  // T is at 2A and 3A on one banner; the other has LR at 2A. Without the rule
+  // the path takes T at 2A; with it, the pull at 2A must be the LR.
+  const banners = [linearBanner(["x1", "LR", "x3"], { name: "N" }), linearBanner(["y1", "T", "T"], { name: "S" })];
+  const free = pf.findPaths(banners, ["T"], { resources: { rare_tickets: 3 } })[0];
+  assert.equal(free.actions.length, 2);
+  const kept = pf.findPaths(banners, ["T"], { resources: { rare_tickets: 3 }, noSkip: keepLR("2A") })[0];
+  assert.deepEqual(kept.actions.map((a) => a.units_pulled[0]), [kept.actions[0].units_pulled[0], "LR", "T"]);
+  assertVerifies(banners, kept);
+});
+
+test("no 11-draw may skip a unit not to skip", () => {
+  // A plain 11-roll from 1A pulls 1A-11A on its own banner, passing the
+  // other banner's LR at 5A: not allowed. One that pulls the LR is.
+  const units = Array.from({ length: 15 }, (_, i) => `u${i}`);
+  const withLR = units.map((u, i) => (i === 4 ? "LR" : i === 10 ? "W" : `v${i}`));
+  const banners = [linearBanner(units, { name: "U" }), linearBanner(withLR, { name: "L" })];
+  const opts = { resources: { cat_food: 1500 }, noSkip: keepLR("5A") };
+  assert.equal(pf.findPaths(banners, ["u10"], { resources: { cat_food: 1500 } }).length, 1);
+  assert.deepEqual(pf.findPaths(banners, ["u10"], opts), []);
+  assert.deepEqual(pf.findPaths(banners, ["W"], opts)[0].actions[0].units_pulled[4], "LR");
+  // A guaranteed 11-draw's uber takes the place of the 11th spot's cat (11A
+  // here): with a unit not to skip there, that draw isn't allowed.
+  const g = linearBanner(units, { name: "G", guaranteed: ["1A", "G", "12A"] });
+  assert.deepEqual(pf.findPaths([g], ["G"], { resources: { cat_food: 1500 } })[0].collected_units, ["G"]);
+  assert.deepEqual(pf.findPaths([g], ["G"], { resources: { cat_food: 1500 }, noSkip: { at: new Set(["11A"]), keep: (u) => u === "LR" } }), []);
+});
+
 // --- A path from its steps ----------------------------------------------------------
 
 test("replaying a path's steps gives the path back", () => {

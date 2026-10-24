@@ -73,9 +73,10 @@ export default function PathFinder({
   const wish = list && list.units.some((u) => u.on) ? { units: list.units, ranking: list.ranking } : null;
   const byUid = useMemo(() => new Map((master?.units || []).map((u) => [u.uid, u])), [master]);
 
+  const keepLegends = wishes.keepLegends;
   const searchSig = useMemo(
-    () => JSON.stringify({ seed, count, wish, ids: [...selected].sort(), owned: owned.size }),
-    [seed, count, wish, selected, owned]
+    () => JSON.stringify({ seed, count, wish, keepLegends, ids: [...selected].sort(), owned: owned.size }),
+    [seed, count, wish, keepLegends, selected, owned]
   );
   const upToDate = result && lastSig === searchSig;
 
@@ -158,6 +159,7 @@ export default function PathFinder({
         resources,
         owned: [...owned],
         wish,
+        keep_legends: keepLegends,
       };
       setResult(await api.search(payload, { onProgress: setProgress, signal: controller.signal }));
       setLastSig(searchSig);
@@ -337,6 +339,16 @@ export default function PathFinder({
                 you don't own.
               </p>
             )}
+            <label className="pf-keep-legends">
+              <input type="checkbox" checked={keepLegends}
+                onChange={(e) => setWishes((w) => wl.setKeepLegends(w, e.target.checked))} />
+              <span>
+                <b>Never skip a Legend Rare</b>{" "}
+                <span className="muted small">
+                  — a path that reaches one pulls it, even if it isn't a target (the Legend Capsule's don't count)
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="pf-run">
@@ -427,8 +439,10 @@ function PathTitle({ sol, ranks }) {
   );
 }
 
-// A path's pulls, step by step.
-function PathSteps({ sol, bannerName }) {
+// A path's pulls, step by step, its Legend Rares tagged (`units`: the
+// result's rarity of each unit).
+function PathSteps({ sol, bannerName, units }) {
+  const legends = (a) => a.units_pulled.filter((u) => units?.[u]?.rarity === "Legend Rare");
   return (
     <>
       <ol className="sol-steps">
@@ -446,6 +460,9 @@ function PathSteps({ sol, bannerName }) {
             )}
             {a.targets_hit.length > 0 && (
               <span className="target-tag"> 🎯 {a.targets_hit.join(", ")}</span>
+            )}
+            {legends(a).length > 0 && (
+              <span className="legend-tag" title="Legend Rare"> ✨ {legends(a).join(", ")}</span>
             )}
           </li>
         ))}
@@ -503,7 +520,7 @@ function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, 
       )}
       {open && sol && (
         <>
-          <PathSteps sol={sol} bannerName={nameOfBanner(planView)} />
+          <PathSteps sol={sol} bannerName={nameOfBanner(planView)} units={planView.units} />
           <TrackTable result={planView} path={sol} ranks={ranks} />
         </>
       )}
@@ -555,6 +572,7 @@ function Results({ result, onFollow, onSave, view, savedSig }) {
         {result.targets.slice(0, 12).map((u) => (ranks?.[u] ? `#${ranks[u]} ${u}` : u)).join(", ")}
         {result.targets.length > 12 ? "…" : ""}
         {result.wishlist && ` · paths ranked by: ${wl.RANKINGS.find((r) => r.id === result.ranking)?.label}`}
+        {result.keep_legends && " · never skipping a Legend Rare"}
       </p>
       {result.unmatched?.length > 0 && (
         <p className="warn small">
@@ -607,7 +625,7 @@ function Results({ result, onFollow, onSave, view, savedSig }) {
                 </button>
               )}
             </div>
-            <PathSteps sol={sol} bannerName={nameOfBanner(result)} />
+            <PathSteps sol={sol} bannerName={nameOfBanner(result)} units={result.units} />
           </div>
         );
       })}
