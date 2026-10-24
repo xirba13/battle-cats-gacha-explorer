@@ -15,21 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: pnpm/action-setup@v4 # the pnpm version in package.json
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
-      - run: pip install pyyaml==6.0.3
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Rebuild the data
-        run: python scrapers/update_godfat_data.py
+        run: pnpm run update-data
       - name: Commit it if it changed
         run: |
-          if git diff --quiet -- frontend/public/data/godfat_bcen.json; then
+          if git diff --quiet -- public/data/godfat_bcen.json; then
             echo "No change."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/public/data/godfat_bcen.json
+          git add public/data/godfat_bcen.json
           git commit -m "data: update godfat banner data"
           git pull --rebase
           git push

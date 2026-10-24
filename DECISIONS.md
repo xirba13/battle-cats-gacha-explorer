@@ -1,7 +1,48 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer.
+building the Battle Cats Gacha Explorer: the latest (the repo clean-up) first,
+then the webapp's sections in the order they happened, then the early
+milestones (M1–M6). The app used to have a Python server
+(`backend/`): anything below about it, its files or its tests describes how it
+worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Repo clean-up: a static site only
+
+Once the site ran entirely in the browser (see "Serverless" below), the repo
+was cleaned up for that (user request):
+
+- **The backend is gone** (`backend/`: the FastAPI app, its Python engine, its
+  data copies and tests), with everything only it used: `deploy.yml` (the SSH
+  deploy to the OCI server, which its owner shuts down), `docker-compose.yml`,
+  the `Makefile`, the frontend's `Dockerfile`, `scrapers/scrape_godfat.py` and
+  `verify_owncode.mjs` (an old copy of the owned-code test).
+- **The site is at the repo root** (user choice): `src/`, `public/`, `tests/`,
+  `index.html`, `package.json`, moved with `git mv` so their history follows.
+  Vercel's Root Directory changes from `frontend` to the repo root.
+- **The daily data job is Node only** (user choice). `scripts/godfat-data.mjs`
+  ports the Python's YAML extraction, with the `yaml` package (a dev
+  dependency) for the small blocks it parses; before the Python was deleted it
+  wrote byte-for-byte the same file as the Python on godfat's real 2 MB YAML
+  for three dates (13, 11 and 3 upcoming banners) and in the specific-events
+  mode. `scripts/update-godfat-data.mjs` is the command (`pnpm run
+  update-data`).
+- **No test lost.** The Python-only tests were ported to JavaScript: the check
+  against godfat's saved tables (`rolls.test.mjs`, 6,268 values, read by a port
+  of the old HTML parser that gives the same tables), the pathfinder's rules
+  (`pathfinder.test.mjs`), the YAML extraction and the Dataset
+  (`godfat-data.test.mjs`), and the Cat Guide uid guards, name matching and
+  targets (`catalog.test.mjs`). Tests of server-only code (FastAPI, scraping,
+  the background refresh) went with it; so did the two that tested the
+  Python's private frontier helpers, which the golden searches cover.
+- **The golden results stay as recorded** (`tests/fixtures/golden.json`): they
+  are the old engine's answers, checked against godfat, and the engine must
+  keep matching them. The script that made them needed the Python, so it's in
+  git history only.
+- **The two Python scripts left** (`scripts/update_cat_guide.py`,
+  `scripts/download_icons.py`, run by hand when new units come out) write the
+  site's files directly and need only Python's standard library (the icon
+  downloader dropped httpx).
 
 ## Webapp pivot (stateless, deployable)
 
@@ -208,10 +249,8 @@ run in the browser.
   want another copy); without one, every unit you don't own. The Python
   reference (`services.compute_targets`) follows the same rule so the golden
   results still hold, and a golden search checks it.
-- **The backend stays for now**, as the reference the golden results come
-  from; it still deploys through `deploy.yml` until it's retired. Retiring it
-  means moving the YAML extraction the data job uses (`godfat_data.py`) and the
-  golden script's inputs out of `backend/`.
+- **The backend stayed** at first, as the reference the golden results came
+  from, then went in the repo clean-up (above).
 
 ## M1 — Pathfinder library
 

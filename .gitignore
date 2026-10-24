@@ -1,33 +1,18 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-
-# App data / caches
-backend/var/
-*.sqlite
-*.sqlite3
-*.db
-backend/app/cache/
-godfat_cache/
-unmatched_names.log
-
 # Node / Vite
 node_modules/
-frontend/dist/
-frontend/.vite/
+dist/
+.vite/
+
+# Python (the scripts in scripts/)
+__pycache__/
+*.py[cod]
 
 # Harness / editor local
 .claude/settings.local.json
+.claude/launch.json
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-
-# Large reference artifacts kept out of the repo (originals live at root)
