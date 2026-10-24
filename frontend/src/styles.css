@@ -337,3 +337,104 @@ button.small { padding: 4px 8px; font-size: 12px; }
 .ss-state { position: absolute; top: 2px; right: 4px; font-size: 13px; }
 .ss-name { display: block; font-size: 10px; line-height: 1.1; max-height: 24px; overflow: hidden; }
 .ss-apply { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+
+/* ---- Track table (Path Finder results) ---- */
+.track-panel { margin-top: 18px; scroll-margin-top: 90px; }
+.track-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+.track-head h4 { margin: 0; }
+.track-panel .legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.track-panel .lg { padding: 1px 6px; border-radius: 4px; border: 1px solid #dde4e4; }
+.track-panel .lg.target { font-weight: 700; color: #b0590f; }
+.track-panel .lg.on-path { background-image: linear-gradient(#00000030, #00000030); }
+.track-panel .lg.next { background-image: repeating-linear-gradient(135deg, #00000026 0 5px, transparent 5px 10px); }
+.track-wrap { overflow: auto; max-height: 78vh; border: 1px solid #dde4e4; border-radius: 6px; background: #fff; }
+/* Fixed column widths (set by <colgroup>) keep columns still while rows are
+   drawn in and out as you scroll. */
+table.track { border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+table.track thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--teal-dark);
+  color: #fff;
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+table.track th.pos {
+  border: 1px solid #cfd8d8;
+  background: #f0f4f4;
+  padding: 2px 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+table.track thead th.pos { background: var(--teal); }
+table.track th.pos.next { background-image: repeating-linear-gradient(135deg, #00000030 0 5px, transparent 5px 10px); }
+/* Every position spans two equal half-rows; with cells capped at two lines
+   (cat + dupe line, no wrapping) the A/B stagger stays exactly half a row.
+   --half-row comes from TrackTable.jsx, which also relies on it to draw only
+   the visible rows. */
+table.track tbody tr { height: var(--half-row); }
+table.track tr.filler td { padding: 0; border: none; }
+table.track td.spacer { border: none; padding: 0; }
+table.track td.cell {
+  border: 1px solid #cfd8d8;
+  background-color: var(--bgc, #fff);
+  padding: 1px 6px;
+  text-align: center;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+}
+table.track td.cell.empty { background: #f7f9f9; }
+table.track td.cell.on-path,
+table.track .main.on-path,
+table.track .dupe.on-path { background-image: linear-gradient(#00000030, #00000030); }
+table.track .main { overflow: hidden; text-overflow: ellipsis; }
+table.track .unit.target { font-weight: 700; color: #b0590f; }
+table.track .jump { color: var(--muted); white-space: nowrap; }
+table.track .dupe {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 11px;
+  color: #4a5555;
+  border-top: 1px dashed #0000002a;
+  margin-top: 2px;
+  padding-top: 1px;
+}
+table.track .dupe .unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+table.track .dupe .jump { flex: none; }
+table.track .dupe-tag { flex: none; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a5a1f; }
+/* Rarity backgrounds (same scheme as the normal-gacha explorer). */
+table.track .rar-rare { --bgc: #eef1f1; }
+table.track .rar-super { --bgc: #fbe7a1; }
+table.track .rar-uber { --bgc: #f9c0c0; }
+table.track .rar-legend { --bgc: #a9ecec; }
+
+/* The path shown on the track table. */
+.solution.selected { border-color: var(--teal); box-shadow: 0 0 0 2px #1f8a8a33; }
+.on-table { font-size: 12px; color: var(--teal-dark); }
+/* The other paths show only their title; clicking it selects that path. The
+   list keeps the clicked title in place itself, so no scroll anchoring. */
+.results { overflow-anchor: none; }
+.solution.collapsed { padding: 0; margin-bottom: 8px; }
+.solution.collapsed:hover { border-color: var(--teal); }
+button.sol-pick {
+  width: 100%;
+  margin: 0;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  row-gap: 4px; /* a long title wraps its cost onto a close second line */
+}
+button.sol-pick:hover:not(:disabled) { background: #f0f7f7; }
+button.sol-pick:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.sol-caret { color: var(--teal-dark); font-size: 12px; margin-right: -8px; }

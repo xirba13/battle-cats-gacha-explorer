@@ -106,16 +106,48 @@ def run_search(
         d["verified"] = ok
         d["verify_errors"] = errors
         d["units_pulled_all"] = _annotate_units(_all_units(sol), master)
+        # The roll-table cells each action pulls, for the track table view.
+        d["cells"] = pathfinder.solution_cells(banners, sol)
         validated.append(d)
 
     return {
         "targets": report.targets,
         "owned_in_banners": report.owned_in_banners,
         "unmatched": sorted(set(report.unmatched)),
-        "banners": [{"index": i, "name": b.name, "type": b.type, "positions": len(b.rolls)}
+        "banners": [{"index": i, "name": b.name, "type": b.type, "positions": len(b.rolls),
+                     "rolls": _table_rolls(b)}
                     for i, b in enumerate(banners)],
+        "units": _unit_info(banners, master),
         "solutions": validated,
     }
+
+
+# What the track table shows per position (the seeds aren't needed there).
+_TABLE_KEYS = ("unit", "alt_unit", "alt_next", "guaranteed_unit", "guaranteed_next",
+               "alt_guaranteed_unit", "alt_guaranteed_next")
+
+
+def _table_rolls(banner: pathfinder.Banner) -> dict:
+    """The banner's roll table for the track table view: position -> entry."""
+    return {pos: {k: e[k] for k in _TABLE_KEYS if e.get(k)} for pos, e in banner.rolls.items()}
+
+
+def _unit_info(banners: list[pathfinder.Banner], master: MasterData) -> dict:
+    """Rarity and Cat Guide index of every unit in the banners' tables, keyed by
+    godfat name, so the table can colour cells and mark what you own."""
+    info: dict = {}
+    for banner in banners:
+        for entry in banner.rolls.values():
+            for key in ("unit", "alt_unit", "guaranteed_unit", "alt_guaranteed_unit"):
+                name = entry.get(key)
+                if not name or name in info:
+                    continue
+                unit = master.matcher.match(name)
+                info[name] = {
+                    "rarity": unit.get("rarity_godfat") if unit else None,
+                    "global_index": unit["global_index"] if unit else None,
+                }
+    return info
 
 
 def _all_units(solution: pathfinder.Solution) -> list[str]:

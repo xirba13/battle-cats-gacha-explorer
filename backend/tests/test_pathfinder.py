@@ -313,3 +313,80 @@ def test_strict_mode_finds_complete_solution():
         assert s.collected_count == 3
         ok, err = pf.verify_solution([banner], s)
         assert ok, err
+
+
+# --------------------------------------------------------------------------- #
+# Track-table cells
+# --------------------------------------------------------------------------- #
+
+def test_solution_cells_match_every_pulled_unit():
+    """Each action's cells, read back from the roll table, give exactly the
+    units it pulled: 1 cell for a single pull, 11 for an 11-draw (ten normal
+    pulls + the guaranteed column of its start row)."""
+    raw = pf.parse_data(SAMPLE)
+    banners = [pf.Banner(name=f"B{i+1}", rolls=r) for i, r in enumerate(raw)]
+    sols = pf.find_paths(banners, {"Mass Production EVA", "The 9th Angel"},
+                         resources={"rare_tickets": 30, "cat_food": 3000},
+                         mode="RESOURCE_LIMIT", max_steps=200000, max_solutions=10)
+    assert sols
+    key = {pf.CELL_UNIT: "unit", pf.CELL_ALT: "alt_unit", pf.CELL_GUARANTEED: "guaranteed_unit",
+           pf.CELL_ALT_GUARANTEED: "alt_guaranteed_unit"}
+    seen = set()
+    for s in sols:
+        for act, cells in zip(s.actions, pf.solution_cells(banners, s), strict=True):
+            rolls = banners[act.banner_index].rolls
+            assert [rolls[c["pos"]][key[c["result"]]] for c in cells] == act.units_pulled
+            assert cells[0]["pos"] == act.position_from
+            expected = {pf.ACTION_GUARANTEED_11: 11, pf.ACTION_MULTI_11: 11}.get(act.action_type, 1)
+            assert len(cells) == expected
+            seen.add(act.action_type)
+            if act.action_type == pf.ACTION_GUARANTEED_11:
+                assert cells[-1]["pos"] == act.position_from
+                assert cells[-1]["result"] in (pf.CELL_GUARANTEED, pf.CELL_ALT_GUARANTEED)
+    assert pf.ACTION_GUARANTEED_11 in seen and pf.ACTION_SINGLE in seen
+
+
+def test_solution_cells_mark_duplicate_results():
+    # 1A gives "Dup" twice in a row on purpose: the second pull at 2A is a dupe
+    # and takes the alternate result, jumping to 5B.
+    rolls = {"1A": {"unit": "Dup"}, "2A": {"unit": "Dup", "alt_unit": "Alt", "alt_next": "5B"},
+             "5B": {"unit": "Target"}}
+    banner = pf.Banner(name="B", rolls=rolls)
+    sols = pf.find_paths([banner], {"Target"}, resources={"rare_tickets": 5})
+    assert sols
+    cells = [c for group in pf.solution_cells([banner], sols[0]) for c in group]
+    assert cells == [{"pos": "1A", "result": "unit"}, {"pos": "2A", "result": "alt"},
+                     {"pos": "5B", "result": "unit"}]
+
+
+def test_11_draw_after_a_dupe_takes_the_dupe_guaranteed_cell():
+    # Pull 1A gives "Dup"; an 11-draw from 2A then starts with a dupe, so
+    # godfat's chain runs from 2A's reroll and the uber is 2A's RG cell.
+    rolls = {"1A": {"unit": "Dup"},
+             "2A": {"unit": "Dup", "alt_unit": "Alt", "alt_next": "3B",
+                    "guaranteed_unit": "WrongUber", "guaranteed_next": "13A",
+                    "alt_guaranteed_unit": "RightUber", "alt_guaranteed_next": "14B",
+                    "alt_guaranteed_seed": "777"}}
+    rolls.update({f"{n}{t}": {"unit": f"u{n}{t}"} for n in range(3, 16) for t in "AB"})
+    banner = pf.Banner(name="B", rolls=rolls)
+    sols = pf.find_paths([banner], {"RightUber", "WrongUber"},
+                         resources={"rare_tickets": 1, "cat_food": 1500})
+    best = sols[0]
+    draw = next(a for a in best.actions if a.action_type == pf.ACTION_GUARANTEED_11)
+    assert draw.position_from == "2A" and draw.units_pulled[-1] == "RightUber"
+    assert draw.position_to == "14B" and draw.result_seed == "777"
+    assert pf.verify_solution([banner], best)[0]
+    cells = pf.solution_cells([banner], best)[best.actions.index(draw)]
+    assert cells[0] == {"pos": "2A", "result": "alt"}
+    assert cells[-1] == {"pos": "2A", "result": "alt_guaranteed"}
+
+
+def test_guaranteed_banner_offers_no_plain_11_roll():
+    # Past the last guaranteed cell (the draw would run off the table), a
+    # guaranteed banner can't do a plain 11-roll instead.
+    rolls = {f"{i}A": {"unit": f"u{i}"} for i in range(1, 30)}
+    rolls["1A"].update(guaranteed_unit="G", guaranteed_next="12A")
+    banner = pf.Banner(name="B", rolls=rolls)
+    assert banner.has_guaranteed
+    sols = pf.find_paths([banner], {"u20"}, resources={"cat_food": 3000})
+    assert not any(a.action_type == pf.ACTION_MULTI_11 for s in sols for a in s.actions)

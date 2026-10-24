@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
+import TrackTable from "./TrackTable.jsx";
 
 const TYPE_BADGE = {
   normal: { label: "Normal", cls: "b-normal" },
@@ -25,6 +26,7 @@ export default function PathFinder({
   master, owned, seed, setSeed, resources, setResources, applyOwned, replaceOwned, setError,
 }) {
   const [events, setEvents] = useState(null);
+  const [dataInfo, setDataInfo] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [count, setCount] = useState(100);
   const [wishlist, setWishlist] = useState("");
@@ -51,6 +53,7 @@ export default function PathFinder({
     try {
       const data = await api.events(seed, count);
       setEvents(data.events);
+      setDataInfo(data.data || null);
       const pre = new Set();
       for (const ev of data.events) {
         if (ev.banner_type === "platinum" && resources.platinum_tickets > 0) pre.add(ev.event_id);
@@ -143,7 +146,7 @@ export default function PathFinder({
         <button disabled={!seed || loadingEvents} onClick={fetchEvents}>
           {loadingEvents ? "Fetching…" : "1 · Fetch Upcoming banners"}
         </button>
-        <span className="muted small">godfat pages can be slow — results are cached per seed.</span>
+        <span className="muted small">Roll tables are computed here from godfat's open data, so this is quick.</span>
       </div>
 
       {followMsg && <div className="follow-msg">✅ {followMsg}</div>}
@@ -152,7 +155,8 @@ export default function PathFinder({
         <div className="pf-banners">
           <h4>2 · Pick banners to search ({selected.size} selected)</h4>
           <p className="muted small">
-            Each selected banner is fetched from godfat. Special banners are
+            Banners and their pools come from godfat's open data
+            {dataInfo?.built_on ? ` (our copy from ${dataInfo.built_on})` : ""}. Special banners are
             pre-selected when you have the matching tickets.
           </p>
           <div className="banner-list">
@@ -187,7 +191,7 @@ export default function PathFinder({
 
       {searching && (
         <div className="loading">
-          Fetching banners and computing paths… this can take a while on slow godfat days.
+          Computing paths… many banners or lots of resources can take a while.
         </div>
       )}
 
@@ -197,10 +201,31 @@ export default function PathFinder({
 }
 
 function Results({ result, onFollow }) {
+  // The selected path shows its steps and is drawn on the track table; the
+  // others show only their title. A new search starts at the best one.
+  const [picked, setPicked] = useState({ result: null, index: 0 });
+  const pathIndex = picked.result === result ? picked.index : 0;
+  // Opening a path closes the one that was open, maybe above it: keep the
+  // clicked title where it was on screen instead of letting it jump.
+  const cards = useRef([]);
+  const anchor = useRef(null);
+  const pick = (i) => {
+    anchor.current = { i, top: cards.current[i]?.getBoundingClientRect().top };
+    setPicked({ result, index: i });
+  };
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    anchor.current = null;
+    const el = a && cards.current[a.i];
+    if (el && a.top != null) window.scrollBy(0, el.getBoundingClientRect().top - a.top);
+  }, [pathIndex]);
   const bannerName = (idx) => {
     const b = result.banners?.find((x) => x.index === idx);
     return b ? b.name : `banner ${idx + 1}`;
   };
+  const table = result.banners?.some((b) => b.rolls) && (
+    <TrackTable result={result} path={result.solutions[pathIndex] ?? null} />
+  );
 
   if (!result.targets.length)
     return (
@@ -208,6 +233,7 @@ function Results({ result, onFollow }) {
         <p className="muted">
           No not-yet-owned target units found in the selected banners.
         </p>
+        {table}
       </div>
     );
 
@@ -227,46 +253,66 @@ function Results({ result, onFollow }) {
       {result.solutions.length === 0 && (
         <p className="muted">No path reaches any target within your resources.</p>
       )}
-      {result.solutions.map((sol, i) => (
-        <div key={i} className="solution">
-          <div className="sol-head">
+      {result.solutions.map((sol, i) => {
+        const open = i === pathIndex;
+        const title = (
+          <>
+            <span className="sol-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
             <span className="sol-rank">#{i + 1}</span>
             <span className="sol-collected">
               🎯 {sol.collected_count} target(s): {sol.collected_units.join(", ")}
             </span>
             <span className="sol-cost">Cost: <CostLine cost={sol.cost} /></span>
-            {/* <span className={sol.verified ? "verified" : "unverified"}>
-              {sol.verified ? "✓ verified" : "✗ UNVERIFIED"}
-            </span> */}
-            <button className="primary small" onClick={() => onFollow(sol)}>
-              I followed this path
-            </button>
+          </>
+        );
+        if (!open)
+          return (
+            <div key={i} ref={(el) => (cards.current[i] = el)} className="solution collapsed">
+              <button className="sol-head sol-pick" onClick={() => pick(i)}
+                title="Show this path's steps and draw it on the track table">
+                {title}
+              </button>
+            </div>
+          );
+        return (
+          <div key={i} ref={(el) => (cards.current[i] = el)} className="solution selected">
+            <div className="sol-head">
+              {title}
+              {/* <span className={sol.verified ? "verified" : "unverified"}>
+                {sol.verified ? "✓ verified" : "✗ UNVERIFIED"}
+              </span> */}
+              <span className="on-table">shown on the table ↓</span>
+              <button className="primary small" onClick={() => onFollow(sol)}>
+                I followed this path
+              </button>
+            </div>
+            <ol className="sol-steps">
+              {sol.actions.map((a, j) => (
+                <li key={j} className={a.targets_hit.length ? "hit" : ""}>
+                  <b>{actionLabel(a)}</b> on{" "}
+                  <span className="banner-ref" title={bannerName(a.banner_index)}>
+                    {bannerName(a.banner_index)}
+                  </span>{" "}
+                  ({a.position_from} → {a.position_to})
+                  {a.units_pulled.length > 1 ? (
+                    <span className="draw"> — {a.units_pulled.join(", ")}</span>
+                  ) : (
+                    <span className="draw"> — {a.units_pulled[0]}</span>
+                  )}
+                  {a.targets_hit.length > 0 && (
+                    <span className="target-tag"> 🎯 {a.targets_hit.join(", ")}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+            <div className="muted small">
+              Final seed position: {sol.final_position}
+              {sol.final_seed && <> · resulting seed: <b>{sol.final_seed}</b></>}
+            </div>
           </div>
-          <ol className="sol-steps">
-            {sol.actions.map((a, j) => (
-              <li key={j} className={a.targets_hit.length ? "hit" : ""}>
-                <b>{actionLabel(a)}</b> on{" "}
-                <span className="banner-ref" title={bannerName(a.banner_index)}>
-                  {bannerName(a.banner_index)}
-                </span>{" "}
-                ({a.position_from} → {a.position_to})
-                {a.units_pulled.length > 1 ? (
-                  <span className="draw"> — {a.units_pulled.join(", ")}</span>
-                ) : (
-                  <span className="draw"> — {a.units_pulled[0]}</span>
-                )}
-                {a.targets_hit.length > 0 && (
-                  <span className="target-tag"> 🎯 {a.targets_hit.join(", ")}</span>
-                )}
-              </li>
-            ))}
-          </ol>
-          <div className="muted small">
-            Final seed position: {sol.final_position}
-            {sol.final_seed && <> · resulting seed: <b>{sol.final_seed}</b></>}
-          </div>
-        </div>
-      ))}
+        );
+      })}
+      {table}
     </div>
   );
 }

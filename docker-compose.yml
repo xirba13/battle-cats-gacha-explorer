@@ -3,7 +3,7 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
-    # Stateless: no volumes, no env, nothing persisted (godfat cached in RAM).
+    # Stateless: no volumes, no env, nothing persisted (godfat's data refreshed in RAM).
 
   frontend:
     build: ./frontend

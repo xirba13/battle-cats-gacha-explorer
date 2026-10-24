@@ -87,9 +87,24 @@ class Banner:
     rolls: dict
     type: str = BANNER_NORMAL
 
+    def __post_init__(self):
+        # A guaranteed banner's 11-draw always ends in its guaranteed uber;
+        # only banners without guaranteed cells get plain 11-rolls.
+        self.has_guaranteed = any("guaranteed_unit" in e for e in self.rolls.values())
+
     @property
     def is_special(self) -> bool:
         return self.type in (BANNER_PLATINUM, BANNER_LEGEND)
+
+
+def guaranteed_for(entry: dict, last_unit) -> tuple:
+    """(unit, next position, seed) of the guaranteed uber for an 11-draw from
+    this cell: godfat's G cell, or its dupe version (RG) when the draw's first
+    pull dupes your last cat (the whole chain then starts from the reroll)."""
+    if last_unit and entry.get("unit") == last_unit and "alt_unit" in entry:
+        return (entry.get("alt_guaranteed_unit"), entry.get("alt_guaranteed_next"),
+                entry.get("alt_guaranteed_seed"))
+    return entry.get("guaranteed_unit"), entry.get("guaranteed_next"), entry.get("guaranteed_seed")
 
 
 # --------------------------------------------------------------------------- #
@@ -505,12 +520,12 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_b
                       unit, new_usage, res_s, act, path)
 
     # --- 11-roll (cat food only) -------------------------------------------
-    g_unit = entry.get("guaranteed_unit")
-    g_next = entry.get("guaranteed_next")
+    g_unit, g_next, g_seed = guaranteed_for(entry, last_unit)
     res_11 = (rt, cf + CAT_FOOD_PER_11_DRAW, pt, lt)
-    if g_unit and g_next:
+    if banner.has_guaranteed:
         # Guaranteed banner: the 11-roll guarantees an uber as the 11th cat.
-        if within_caps(res_11):
+        # (No guaranteed cell here = the draw runs past the table: skip it.)
+        if g_unit and g_next and within_caps(res_11):
             units, targets_hit, new_collected, ok = _simulate_11(
                 pos, last_unit, banner.rolls, g_unit, collected, target_to_id)
             if ok:
@@ -518,7 +533,7 @@ def _expand_normal(pq, counter, visited, visited_key, within_caps, rare_ticket_b
                              units, targets_hit,
                              {"rare_tickets": 0, "cat_food": CAT_FOOD_PER_11_DRAW,
                               "platinum_tickets": 0, "legend_tickets": 0},
-                             result_seed=entry.get("guaranteed_seed"))
+                             result_seed=g_seed)
                 _try_push(pq, counter, visited, visited_key, g_next, new_collected,
                           g_unit, new_usage, res_11, act, path)
     else:
@@ -676,8 +691,7 @@ def verify_solution(banners, solution: Solution) -> tuple[bool, list[str]]:
 
         if act.action_type == ACTION_GUARANTEED_11:
             entry = banner.rolls[pos]
-            g_unit = entry.get("guaranteed_unit")
-            g_next = entry.get("guaranteed_next")
+            g_unit, g_next, _g_seed = guaranteed_for(entry, last_unit)
             if not g_unit or not g_next:
                 errors.append(f"Step {step}: no guaranteed roll at {pos}")
                 return False, errors
@@ -728,3 +742,51 @@ def verify_solution(banners, solution: Solution) -> tuple[bool, list[str]]:
         return False, errors
 
     return True, errors
+
+
+# --------------------------------------------------------------------------- #
+# Table cells a solution pulls (for drawing the path on a track table)
+# --------------------------------------------------------------------------- #
+
+CELL_UNIT = "unit"              # the cell's normal result
+CELL_ALT = "alt"                # its duplicate result (track switch)
+CELL_GUARANTEED = "guaranteed"  # the 11-draw's guaranteed column
+CELL_ALT_GUARANTEED = "alt_guaranteed"  # ...its dupe version (first pull was a dupe)
+
+
+def solution_cells(banners, solution: Solution) -> list[list[dict]]:
+    """For each action, the roll-table cells it pulls, in order: a list of
+    {"pos": "3A", "result": "unit" | "alt" | "guaranteed" | "alt_guaranteed"}.
+    A single pull is one cell, a plain 11-roll eleven, a guaranteed 11-draw its
+    ten normal pulls plus the guaranteed column of the row it starts on (its
+    dupe line when the first pull was a dupe). Walks the path with the same
+    rules as `verify_solution`, so the cells match the path.
+    """
+    banners = _coerce_banners(banners)
+    out: list[list[dict]] = []
+    pos, last_unit = "1A", None
+    for act in solution.actions:
+        rolls = banners[act.banner_index].rolls
+        cells: list[dict] = []
+
+        def pull(p, last):
+            unit, next_p, note, _seed = get_next_pos_normal(p, rolls.get(p, {}).get("unit"), rolls, last)
+            cells.append({"pos": p, "result": CELL_ALT if note == "Duplicate" else CELL_UNIT})
+            return unit, next_p
+
+        if act.action_type == ACTION_GUARANTEED_11:
+            entry = rolls.get(pos, {})
+            g_unit, g_next, _g_seed = guaranteed_for(entry, last_unit)
+            # Same rule as guaranteed_for: a dupe first pull takes the RG cell.
+            dupe_first = bool(last_unit) and entry.get("unit") == last_unit and "alt_unit" in entry
+            p, last = pos, last_unit
+            for _ in range(10):
+                last, p = pull(p, last)
+            cells.append({"pos": pos, "result": CELL_ALT_GUARANTEED if dupe_first else CELL_GUARANTEED})
+            pos, last_unit = g_next, g_unit
+        else:
+            n = 11 if act.action_type == ACTION_MULTI_11 else 1
+            for _ in range(n):
+                last_unit, pos = pull(pos, last_unit)
+        out.append(cells)
+    return out

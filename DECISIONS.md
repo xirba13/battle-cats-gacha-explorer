@@ -45,6 +45,102 @@ nothing**:
   `href` (`seed=...`). `parse_tables` captures it per cell, the search threads it
   into `Action.result_seed` / `Solution.final_seed`, and "I followed this path"
   returns it so the UI fills in the next seed automatically (verify on godfat).
+- **Track table (results view, like the normal-gacha explorer).** `/api/search`
+  also returns each banner's parsed roll table (`banners[].rolls`, without the
+  seeds), every unit's rarity (`units`), and per solution the cells each action
+  pulls (`cells`, from `pathfinder.solution_cells`): a single pull is one cell,
+  an 11-roll eleven, a guaranteed 11-draw its ten normal pulls plus the
+  guaranteed column of its start row. `solution_cells` walks the path with the
+  same rules as `verify_solution`, and a test reads every cell back from the
+  table and checks it gives exactly the units the action pulled. The frontend
+  draws godfat-style A/B tracks: one column per banner, plus an "11-draw"
+  column on guaranteed banners (user choice: godfat style rather than an extra
+  line in the cell). The selected path is shaded (only the result it gets when
+  a cell has a dupe line), the end position is striped, and only the rows near
+  the screen are drawn (fixed 19 px half-rows), so a 1000-deep table stays
+  light. Cells are for looking only (user choice); "I followed this path" stays
+  the way to update seed, units and resources. The results list shows only each
+  path's title (targets and cost) except for the selected path, which also
+  shows its steps and the "I followed this path" button (user request);
+  clicking a title selects that path and keeps the title where it was on
+  screen.
+
+## Local roll tables (no scraping)
+
+Roll tables are computed by the app instead of scraped from bc.godfat.org, so
+his site being slow or down doesn't matter (user request). `BCPE_SOURCE=godfat`
+switches back to scraping (`godfat.py`, unchanged).
+
+- **Engine (`backend/app/rolls.py`).** A Python port of godfat's roll logic
+  (battle-cats-rolls `gacha.rb`, `gacha_pool.rb`, `cat.rb`; Apache-2.0: licence
+  in `LICENSES/`, attribution and the list of changes in the file header).
+  xorshift32 (13/17/15), advanced once before row 1; row n of track A reads
+  seeds s[2n−1] (rarity) and s[2n] (slot), track B s[2n] and s[2n+1]. Rarity is
+  `seed % 10000` against the event's rare/supa/uber rates (legend gets the
+  rest); the cat is `seed % len(slots)` in the gacha's cat list filtered by that
+  rarity. Dupe: only a Rare cat equal to the previous cat; it re-picks from a
+  copy of the slot list without that slot, one seed step per re-pick, and lands
+  at `row + (track+steps)//2 + 1` on track `((track+steps−1)^1)&1`. Guaranteed:
+  follow the pull chain 10 times; the 11th position's rarity seed picks the
+  uber, and you land at `sequence − (track^1)` on the other track. Every cell
+  and every dupe cell gets one (the dupe one is what an 11-draw starting there
+  gives when its first pull is a dupe). The seed after a pull is that cat's slot
+  seed, the value godfat puts in each cat's link, so auto seed-fill still works.
+  The output is the same per-position dict `parse_tables` reads from godfat's
+  HTML, so the search, track table and seed-fill didn't change. A 1000-row
+  guaranteed banner takes ~12 ms (a godfat page takes seconds).
+- **Validated cell for cell.** `test_rolls.py` rebuilds the five tables in the
+  scraped fixture (four guaranteed banners and a Legend Capsule; the seed is
+  recovered from 1A's link by stepping xorshift back twice) and compares every
+  value: 1,400 cells / 6,268 values, including 20 dupe cells, 20 dupe-first
+  guaranteed cells and 1,116 guaranteed cells. All match; the only differences
+  were two cats godfat has renamed since (Amakusa Shiro → Shiro Amakusa,
+  Terun → Huntress Terun), mapped in the test. Also checked against his live
+  site on 2026-10-23: six current tables (Platinum Capsule, Legend Capsule, a
+  guaranteed banner, three normal ones; 360 cells) were identical.
+- **Data (`backend/app/godfat_data.py`, `data/godfat_bcen.json`).** From
+  godfat's `build/bc-en.yaml` on GitLab. Parsing the whole ~2 MB file takes ~7 s
+  and peaks at ~100 MB (too much for the free-tier server), and it's mostly unit
+  stats. So it's split into top-level sections and 2-space entries by regex and
+  only the blocks needed are parsed: events that ended at most 7 days ago, their
+  gachas, and those gachas' cats (first-form name + rarity): ~1 s and ~8 MB on
+  top of the text (a whole refresh, download included, ~3 s and ~26 MB at
+  peak), giving ~20 KB of JSON, written one entry per line so updates diff
+  readably. godfat's cat ids are the master uid + 1, and all of them map to Cat
+  Guide names.
+- **Upcoming list = godfat's.** First the end dates, as his site fixes them
+  when it loads this file (`noramlize_end_date_by_series_id!`): an event that
+  starts before the previous event of the same gacha series has ended ends that
+  one on its start day. That's how a Platinum/Legend Capsule listed "until 2030"
+  ends when the next one starts. Then, among his 100 most recent events (the
+  last ones in the file, like his menu), the ones running now (start < today ≤
+  end), then the ones starting later (today ≤ start), in file order. Checked
+  against his live menu on 2026-10-23: the same 13 banners, order and dates
+  (without the end-date rule we listed 17, without the 100-event window 123).
+  Banner type from his flags: `platinum: platinum` → Platinum Capsule,
+  `platinum: legend` → Legend Capsule, anything else (incl. `dl-100m`) normal.
+  A gacha with a cat missing from the data has an empty pool, as on godfat;
+  that banner is skipped ("no cats in this gacha").
+- **Refresh.** The shipped JSON is loaded at start; a daemon thread downloads
+  the YAML every `BCPE_DATA_REFRESH_HOURS` (default 12, 0 = off) with
+  `If-None-Match` (ETag), extracts it and swaps the dataset in one assignment.
+  Any failure (network, HTTP error, a format change caught by `validate`) is
+  logged and the current data kept. In memory only, so the server stays
+  stateless; `scrapers/update_godfat_data.py` regenerates the shipped copy.
+- **Step-up banners** (15-draw guarantee) get no guaranteed column: the search
+  only plans 11-draws, so it would plan wrong ones. They're searched as normal
+  banners for now.
+- **Two search fixes found while validating (both sources).** (1) An 11-draw
+  whose first pull is a dupe of the previous cat starts on the dupe line, so its
+  uber and landing are the dupe cell's guaranteed values (`alt_guaranteed_*`),
+  not the cell's; `guaranteed_for()` picks the right one in the search,
+  `verify_solution` and the track-table cells. (2) On a guaranteed banner every
+  11-draw is guaranteed; where the table has no guaranteed cell (its last ~10
+  rows) the search used to plan a plain 11-roll, which can't happen in-game. Now
+  it plans none there.
+- **Limits.** Tables are now built per request, so depth is capped at 1000 rows
+  (`MAX_COUNT`, as in the UI), and a seed that isn't a number from 0 to 2³²−1 is
+  a 400.
 
 ## M1 — Pathfinder library
 

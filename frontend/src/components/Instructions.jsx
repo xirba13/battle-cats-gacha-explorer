@@ -46,15 +46,21 @@ export default function Instructions({ disclaimer }) {
 
       <h3>2 · Path Finder</h3>
       <ol>
-        <li><b>Fetch Upcoming banners</b> for your seed (godfat can be slow; results
-          are cached).</li>
+        <li><b>Fetch Upcoming banners</b>: the banners running now and coming up, from godfat's open
+          data. The roll tables are computed here the same way godfat does, so his site being slow or
+          down doesn't matter.</li>
         <li><b>Pick the banners</b> to search. Platinum/Legend banners are
           pre-selected when you have the matching tickets.</li>
-        <li><b>Find optimal paths.</b> Each path lists the exact pulls to reach the
-          units you don't own yet, the resource cost, and ends at the last target.</li>
+        <li><b>Find optimal paths.</b> Each path's title shows the units you don't own yet
+          that it reaches and its resource cost. The selected path (the best one at first) also
+          lists its exact pulls, ending at the last target; <b>click another path's title</b> to
+          see its pulls instead.</li>
+        <li>Under the paths, the <b>track table</b> shows each banner's roll table (track A and
+          track B, with an 11-draw column on guaranteed banners). The selected path is shaded, units
+          you don't own are in bold, and the striped position is where you'll be after the path.</li>
         <li>Pull that path in-game, then click <b>“I followed this path.”</b> Every
           unit pulled is marked owned, your resources are decremented, and your{" "}
-          <b>new seed is filled in automatically</b> (read from godfat's data — just
+          <b>new seed is filled in automatically</b> (worked out the same way godfat does — just
           verify it). Then search again.</li>
       </ol>
 

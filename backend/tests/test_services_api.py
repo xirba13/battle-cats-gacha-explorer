@@ -64,25 +64,52 @@ def test_followed_result_is_stateless(master):
 
 
 # --------------------------------------------------------------------------- #
-# API (stateless, godfat mocked)
+# API (stateless; banner data mocked, never fetched)
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture
-def client(monkeypatch):
+def main_module(monkeypatch):
     monkeypatch.delenv("BCPE_CACHE", raising=False)
-    from app import main as main_module
-    importlib.reload(main_module)
+    monkeypatch.delenv("BCPE_SOURCE", raising=False)
+    monkeypatch.setenv("BCPE_DATA_REFRESH_HOURS", "0")  # no background downloads in tests
+    from app import main
+    importlib.reload(main)
+    return main
 
-    def fake_ingest(client, seed, count=100, resources=None, event_ids=None):
+
+@pytest.fixture
+def client(main_module, monkeypatch):
+    def fake_ingest(seed, count, resources, event_ids):
         from app import godfat
         rolls = {f"{i+1}A": {"unit": u, "unit_seed": f"s{i+1}"}
                  for i, u in enumerate(["Cat", "Tank Cat", "Axe Cat"])}
         banner = pathfinder.Banner(name="Test", rolls=rolls, type=pathfinder.BANNER_NORMAL)
         return godfat.Ingestion(seed=str(seed), banners=[banner], events=[], skipped=[])
 
-    monkeypatch.setattr(main_module.godfat, "ingest_upcoming", fake_ingest)
+    monkeypatch.setattr(main_module, "ingest", fake_ingest)
     from fastapi.testclient import TestClient
     return TestClient(main_module.app)
+
+
+def test_events_and_search_use_the_local_data_by_default(main_module):
+    # No godfat request: the banner list and tables come from the shipped data.
+    from fastapi.testclient import TestClient
+    assert main_module.SOURCE == "local"
+    client = TestClient(main_module.app)
+    res = client.get("/api/events", params={"seed": "139026851"}).json()
+    assert res["data"]["source"] == "local" and res["data"]["built_on"]
+    events = res["events"]
+    assert events and {"event_id", "description", "date_start", "date_end", "banner_type"} <= set(events[0])
+    normal = next(e for e in events if e["banner_type"] == "normal")
+    body = {"seed": "139026851", "event_ids": [normal["event_id"]], "count": 5000,
+            "resources": {"rare_tickets": 3, "cat_food": 0, "platinum_tickets": 0, "legend_tickets": 0},
+            "owned": []}
+    out = client.post("/api/search", json=body).json()
+    rows = out["banners"][0]["rolls"]
+    assert len(rows) == 2 * main_module.MAX_COUNT  # depth is capped
+    assert all(s["verified"] for s in out["solutions"])
+    bad = client.post("/api/search", json={**body, "seed": "not-a-seed"})
+    assert bad.status_code == 400
 
 
 def test_health_and_master(client):
@@ -116,3 +143,18 @@ def test_search_then_followed_stateless(client):
     # Server kept no state: a fresh /api/master still lists the full unit set
     # (owned is client-side; master just lists units).
     assert len(client.get("/api/master").json()["units"]) >= 730
+
+
+def test_run_search_returns_the_track_table(master):
+    # The roll tables (without seeds), each unit's rarity, and the cells each
+    # step pulls: what the frontend needs to draw the path on the table.
+    banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
+    result = services.run_search([banner], master, owned=set(),
+                                 resources={"rare_tickets": 10}, max_solutions=1)
+    table = result["banners"][0]["rolls"]
+    assert table["1A"] == {"unit": "Cat"}  # no seeds
+    assert result["units"]["Tank Cat"]["global_index"] == master.index_for_name("Tank Cat")
+    assert result["units"]["Tank Cat"]["rarity"]
+    sol = result["solutions"][0]
+    assert len(sol["cells"]) == len(sol["actions"])
+    assert sol["cells"][0] == [{"pos": "1A", "result": "unit"}]
