@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { encodeOwned, decodeOwned } from "./src/owncode.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), ".."); // repo root
-const master = JSON.parse(readFileSync(join(ROOT, "backend/data/cat_guide_master.json"), "utf8"));
+const master = JSON.parse(readFileSync(join(ROOT, "frontend/public/data/cat_guide_master.json"), "utf8"));
 const units = master.units;
 
 const buildMaps = (us) => {

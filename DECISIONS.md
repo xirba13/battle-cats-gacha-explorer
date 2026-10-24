@@ -142,6 +142,72 @@ switches back to scraping (`godfat.py`, unchanged).
   (`MAX_COUNT`, as in the UI), and a seed that isn't a number from 0 to 2³²−1 is
   a 400.
 
+## Serverless: everything in the browser
+
+The site no longer needs a server (user request): the Cat Guide list and
+godfat's banner data are static files, and the roll tables and the path search
+run in the browser.
+
+- **A port, checked against the Python.** `frontend/src/engine/` ports
+  `rolls.py`, the Dataset/ingest part of `godfat_data.py`, `pathfinder.py`,
+  `names.py`, `services.py` and the request handling of `main.py`, with the
+  same states, costs, heap order (−targets, scalar cost, resources, push
+  counter) and tie-breaks, so it returns the same paths in the same order.
+  `tests/fixtures/make_golden.py` runs the Python on frozen data (the Dec 2025
+  fixture events and the data shipped on 2026-10-23, plus the part of the Cat
+  Guide list they use, all embedded in `golden.json`) and records 141 roll
+  tables (5 seeds, every event, one 1000 rows deep), Upcoming lists for 5
+  dates, 9 complete search results (every mode, guaranteed banners, dupes,
+  capsules, owned units, a 197-target search, nothing affordable…) and 2 "I
+  followed this path" results. `tests/engine.test.mjs` requires identical ones
+  (SHA-256 of the canonical JSON, after readable summaries). Rerun the script
+  after changing either engine on purpose.
+- **Faster.** The same searches run 4–6× faster than the Python: a typical
+  wishlist search takes 0.4 s in the browser (2.8 s on the old server); the
+  worst case (every banner, no wishlist, the 1.5M-step cap) 11.5 s (~60 s).
+- **Memory, for phones.** That worst case first peaked at 1.2 GB. It's the same
+  search stored more compactly: a path step is only "banner + single or
+  11-draw", in two Int32Arrays (the full actions of the few result paths are
+  rebuilt by replaying them); a state keeps only the limited banners' pull
+  counts (nothing reads the others'); a frontier vector is packed into one
+  number when the budgets allow it; the visited key is one flat string, with
+  the targets mask as text worked out once per new mask. Now ~230 MB live in
+  Node for the worst case (browsers compress pointers, so less), and typical
+  searches are tiny. Worth knowing: numbering BigInt masks through a Map made
+  it 40× slower, because V8 hashes BigInt Map keys poorly.
+- **More than 31 targets** use BigInt masks (a 32-bit number holds 31); a
+  search with every unit as a target has ~200.
+- **Caps.** The search runs in a Web Worker (one per search, so the page stays
+  responsive and shows progress; leaving the tab cancels it) and stops after
+  20 s or 2.5M states (1M on devices that report ≤ 2 GB of memory), on top of
+  the 1.5M steps the server had. The result then says it stopped early and that
+  cheaper paths may exist; the server stopped at 1.5M steps silently.
+- **Data.** `public/data/godfat_bcen.json` and `cat_guide_master.json` are
+  plain files. A daily GitHub Actions job (`update-data.yml`, 04:23 UTC)
+  rebuilds the banner data from godfat's GitLab with
+  `scrapers/update_godfat_data.py` and commits it when it changed; Vercel then
+  republishes the site. (Pushes made with `GITHUB_TOKEN` don't start other
+  workflows, so it never deploys the old server.) The page warns when its copy
+  is more than 3 days old. The Cat Guide list still comes from
+  `scrapers/update_cat_guide.py`; a test fails while the site's copy differs
+  from the backend's.
+- **Dates** come from the device: the Upcoming list compares its local date
+  with the events', as godfat's site does with its server's.
+- **Saved in the browser too** (user request). `src/browserSave.js` keeps the
+  same codes as the URL (owned code, seed, resources, tab) plus when they were
+  saved, under the localStorage key `bcge.saved.v1`, on every change. With no
+  data in the URL, the page restores that copy (and writes it into the URL, so
+  Copy link still works). A link with other data asks which one to keep (user
+  choice, so an old bookmark can't silently replace the saved collection):
+  owned codes are compared by the units they hold, and nothing is saved over the
+  browser's copy until the player chooses. "Save in this browser" off forgets
+  the copy and stops saving (`bcge.saveOff`). Storage that's blocked or full is
+  ignored; the URL still works. Two open tabs: the last change wins.
+- **The backend stays for now**, as the reference the golden results come
+  from; it still deploys through `deploy.yml` until it's retired. Retiring it
+  means moving the YAML extraction the data job uses (`godfat_data.py`) and the
+  golden script's inputs out of `backend/`.
+
 ## M1 — Pathfinder library
 
 - **Module layout.** `test2.py` became `backend/app/pathfinder.py`. The global

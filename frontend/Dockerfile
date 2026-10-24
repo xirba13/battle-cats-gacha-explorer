@@ -12,5 +12,5 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 EXPOSE 5173
-# Dev server with the API proxied to the backend service (see docker-compose).
+# Dev server (the app needs no backend: everything runs in the browser).
 CMD ["pnpm", "dev", "--host", "0.0.0.0"]

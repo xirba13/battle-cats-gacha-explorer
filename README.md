@@ -8,15 +8,17 @@ path** to the units they don't yet own, using godfat seed-tracking data.
 > check a path on [bc.godfat.org](https://bc.godfat.org/) before spending real
 > resources.**
 
-**Fully stateless / no accounts / no database** — your collection lives entirely
-in the page URL (a compact code), so the server stores nothing. It has three tabs:
+**Runs entirely in your browser** — no server, no accounts, no database. Your
+collection lives in the page URL (a compact code), and the roll tables and the
+path search are computed on your device. It has three tabs:
 
 1. **Cat Guide** — a wiki-style grid mirroring the in-game Cat Guide order where
    you toggle units owned/not-owned. Includes a name search box, owned/rarity
    filters, and copy-link / copy-code / load-code buttons to save your collection.
 2. **Path Finder** — enter your seed + resources; the app builds the roll tables
-   of the *Upcoming* banners itself (godfat's roll logic and open data, so
-   bc.godfat.org being slow or down doesn't matter), computes optimal paths to
+   of the *Upcoming* banners in your browser (godfat's roll logic and his open
+   data, updated daily, so bc.godfat.org being slow or down doesn't matter),
+   computes optimal paths to
    the units you don't own yet (each path ends at its last target), shows them on
    a godfat-style **track table**, and offers an **"I followed this path"**
    button that marks every newly pulled unit as owned, decrements your resources,
@@ -36,22 +38,31 @@ in the page URL (a compact code), so the server stores nothing. It has three tab
 - **You must already be seed-tracking.** This app does **not** derive your seed;
   you provide it. You can find it via [bc-seek.godfat.org/seek](https://bc-seek.godfat.org/seek),
   and it's re-filled automatically each time you follow a path.
-- **Nothing is stored on any server.** Your owned units, seed, and resources are
-  encoded in the page URL — bookmark it (or copy your code) to keep them.
+- **Nothing is stored on or sent to any server.** Your owned units, seed, and
+  resources are saved in your browser and encoded in the page URL — bookmark it
+  (or copy your code) to keep them for another device.
 - **Region / version:** **BCEN (English) only**, unit list current as of game
   **version 15.6.1**. The master list is region-swappable (see
   [Re-scrapers](#re-scrapers)) but other regions aren't bundled yet.
 
 ## Your data & privacy
 
-There are no accounts and no server-side storage. Your **owned units, seed, and
-resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`), so:
+There are no accounts and no server: the page loads static files and computes
+everything on your device. Your **owned units, seed, and resources** are encoded
+into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browser
+(localStorage), so:
 
-- **Bookmark the page** (or use **Copy link** in the Cat Guide) to save everything.
-- **Copy code** saves just your owned-units code; **Load a code…** restores it if
-  you return without the link.
-- To "reset", just open the site without the hash (a fresh URL) — there's nothing
-  to delete.
+- Opening the site again in the same browser brings everything back, even
+  without the link.
+- **Bookmark the page** (or use **Copy link** in the Cat Guide) to save everything
+  for another device or browser; **Copy code** saves just your owned-units code,
+  and **Load a code…** restores it.
+- Opening a link whose data isn't what your browser saved asks which one to keep,
+  so an old bookmark or someone else's link can't replace your saved collection.
+- **Save in this browser** (Cat Guide) turns the browser's copy off and forgets
+  it, e.g. on a shared computer. Private windows don't keep it, clearing site data
+  deletes it, and Safari on iPhone drops it after about 7 days without a visit
+  unless the site is on the home screen.
 
 ## How a typical session goes
 
@@ -61,8 +72,10 @@ resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`),
    platinum tickets, legend tickets).
 3. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
    (special Platinum/Legend banners are pre-selected when you have the tickets),
-   then *Find optimal paths*. The search button locks until you change a
-   banner/wishlist. Under the paths, the **track table** shows each searched
+   then *Find optimal paths*. The search runs in the background in your browser:
+   usually well under a second; a big one (many banners, no wishlist) stops after
+   20 s and shows the best paths found so far. The search button locks until you
+   change a banner/wishlist. Under the paths, the **track table** shows each searched
    banner's roll table (tracks A and B, plus an 11-draw column on guaranteed
    banners) with the selected path shaded.
 4. Pick a path, pull it in-game, then click **"I followed this path."** Every
@@ -82,11 +95,21 @@ resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`),
 ## Tests
 
 ```bash
-cd backend && .venv/Scripts/python.exe -m pytest      # 61 backend tests
-cd frontend && pnpm test                              # owned-code (incl. insertion-safety)
+cd frontend && pnpm test                              # the browser engine + owned-code (node --test)
+cd backend && .venv/Scripts/python.exe -m pytest      # 61 tests of the Python reference engine
 ```
 
-Backend covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
+The browser engine (`frontend/src/engine`) is a port of the Python one, and its
+tests check it gives **exactly** the Python's results: `tests/fixtures/golden.json`
+holds the Python's roll tables (141 of them), Upcoming lists, nine complete search
+results (guaranteed banners, dupes, capsules, every mode, a 197-target search…)
+and "I followed this path" results, made by `tests/fixtures/make_golden.py` from
+frozen data. Rerun that script after changing either engine on purpose. The
+frontend tests also cover the search's time and memory caps, seed checks, the
+shipped data, and the URL owned-code (round-trips, and a mid-guide unit
+insertion can't shift or falsely-own existing units).
+
+The Python suite covers the pathfinder (4-resource Pareto, platinum/legend mechanics,
 tickets-first single pulls, plain 11-rolls on non-guaranteed banners, paths
 trimmed to the last target, resulting-seed capture, re-simulation of every
 returned solution, and each path's track-table cells), the local roll engine
@@ -94,9 +117,7 @@ returned solution, and each path's track-table cells), the local roll engine
 guaranteed ubers and seeds), extracting and refreshing godfat's data (a bad
 download never replaces good data), godfat scraping (offline via a mock
 transport), name normalisation, the stateless service + FastAPI surface
-(search → followed), and the master-list `uid` integrity guards. The frontend test round-trips the URL
-owned-code and proves a mid-guide unit insertion can't shift or falsely-own
-existing units.
+(search → followed), and the master-list `uid` integrity guards.
 
 ## Unit icons (offline rendering)
 
@@ -119,10 +140,11 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
 - **godfat data** (the banners, gacha pools and cats the roll tables are built
   from): `python scrapers/update_godfat_data.py` downloads `build/bc-en.yaml`
   from [godfat's repo](https://gitlab.com/godfat/battle-cats-rolls) and rewrites
-  `backend/data/godfat_bcen.json` (`--input bc-en.yaml` reads a saved copy). The
-  running server refreshes this data by itself (see [Deploying](#deploying)); the
-  shipped copy is what it starts with and keeps if GitLab can't be reached, so
-  re-run this now and then.
+  `frontend/public/data/godfat_bcen.json` (`--input bc-en.yaml` reads a saved
+  copy). **You don't need to:** a GitHub Actions job
+  (`.github/workflows/update-data.yml`) does it every day and commits the file
+  when it changed, which republishes the site. Run it by hand (or start the job
+  from the Actions tab) to pick up new banners sooner.
 - **godfat banners (scraped):** `python scrapers/scrape_godfat.py --seed SEED --list`
   (or `--out banners.json` to dump parsed tables; reuses the app's polite,
   cached, rate-limited client). The app itself only scrapes with
@@ -133,8 +155,9 @@ python scrapers/download_icons.py --master backend/data/cat_guide_master_<region
   backend/data/cat_guide_master.json` (or, if Miraheze blocks the bot, Save the
   page in your browser and pass it with `--input Cat_Guide.html`). Stable UIDs
   are derived from each unit's game ID, and existing icon fallback URLs are
-  retained when passing `--previous`. Drop a `cat_guide_master_<region>.json`
-  into `backend/data/` and the app will offer that region in the top-bar selector.
+  retained when passing `--previous`. Then copy it to
+  `frontend/public/data/cat_guide_master.json`, the site's copy (a test fails
+  while the two differ).
 
 ### Updating to a newer game version
 
@@ -149,7 +172,19 @@ a re-scrape ever breaks the naming convention.)
 ## Project layout
 
 ```
-backend/                # stateless FastAPI service (no DB, no disk writes)
+frontend/           # the site: Vite + React, runs entirely in the browser
+  src/engine/       # rolls.js (roll tables, port of godfat's logic), data.js (banner data, Upcoming list),
+                    # pathfinder.js (path search), names.js, services.js, search.worker.js (runs a search)
+  src/api.js        # what the page used to ask the server, answered in the browser
+  src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
+  src/browserSave.js  # the same state saved in this browser (localStorage)
+  src/components/   # Cat Guide, Path Finder, track table, instructions
+  public/data/      # godfat_bcen.json (banner data, updated daily) + cat_guide_master.json
+  public/icons/     # ~723 unit icons
+  public/top_icons/ # top-bar resource icons
+  tests/            # engine vs the Python's golden results (fixtures/golden.json, make_golden.py), owned-code, browser saving
+backend/            # the old server (FastAPI), no longer used by the site: kept as the
+                    # reference the browser engine is tested against, until it's retired
   app/
     pathfinder.py   # search core (4-resource Pareto, platinum/legend, 11-rolls), verify_solution, seed capture, track-table cells
     rolls.py        # roll tables computed locally (port of godfat's roll logic, Apache-2.0)
@@ -162,37 +197,24 @@ backend/                # stateless FastAPI service (no DB, no disk writes)
   data/cat_guide_master.json   # BCEN unit list (game v15.6.1), keyed by stable uid
   data/godfat_bcen.json        # current banners, their gacha pools and cats (from godfat's bc-en.yaml)
   tests/            # 61 tests + fixtures (sample godfat tables, their events' data, event list)
-frontend/           # Vite + React (3-tab UI)
-  src/owncode.js    # owned/seed/resources <-> URL code (the "save file")
-  src/components/TrackTable.jsx  # godfat-style roll tables with the selected path
-  public/icons/     # ~723 unit icons
-  public/top_icons/ # top-bar resource icons
 scrapers/           # godfat data, godfat banners, Cat Guide list, and icon downloader
+.github/workflows/  # update-data.yml (daily banner data), deploy.yml (the old server)
 LICENSES/           # third-party licences (battle-cats-rolls, Apache-2.0)
 DECISIONS.md        # assumptions, how the roll tables are computed, godfat findings, banner mechanics
 ```
 
 ## Deploying
 
-It's a static frontend + a small stateless API, so it's easy to host:
+It's a static site: build with `pnpm build` in `frontend/` and serve `dist/`
+anywhere (Vercel, Netlify, GitHub Pages, nginx…). No server, no environment
+variables. The daily data job's commits republish it on hosts that build on
+push (Vercel does). Locally: `cd frontend && pnpm dev`.
 
-- **Backend:** any Python host (Render, Fly.io, Railway, a VPS) — `uvicorn
-  app.main:app`. It keeps no state, so it scales/restarts freely. It starts from
-  the shipped `data/godfat_bcen.json` and refreshes godfat's data from GitLab in
-  the background, in memory only (a failed refresh keeps the current data).
-  Environment variables:
-  - `BCPE_DATA_REFRESH_HOURS` — how often to refresh (default `12`; `0` = never,
-    just use the shipped file).
-  - `BCPE_SOURCE=godfat` — scrape bc.godfat.org's pages instead of computing the
-    tables (the old way: slower, and down whenever his site is).
-- **Frontend:** build with `pnpm build` and serve the static `dist/` (Netlify,
-  Vercel, GitHub Pages, nginx…).
-- Point the frontend's `/api` at the backend — simplest is a reverse proxy so
-  both share one origin; CORS is enabled if you host them on separate domains.
-  For split hosting, build the frontend with the backend URL baked in:
-  `VITE_API_BASE=https://api.yourbackend.com pnpm build` (leave it unset for
-  same-origin / reverse-proxy deploys — the default).
-- Or just run `docker compose up` on a single box (frontend proxies to backend).
+**The old server** (`backend/`, FastAPI) isn't needed any more; it still deploys
+to its host through `deploy.yml` until it's retired. It works the same as before
+(`uvicorn app.main:app`; `BCPE_DATA_REFRESH_HOURS` sets how often it refreshes
+godfat's data, `BCPE_SOURCE=godfat` makes it scrape bc.godfat.org instead).
+`docker compose up` runs it next to the site's dev server.
 
 See [DECISIONS.md](DECISIONS.md) for how the roll tables are computed, the
 reverse-engineered godfat URL scheme, banner-mechanic confirmations, and other
@@ -203,11 +225,12 @@ non-obvious choices.
 Released into the **public domain** under [The Unlicense](LICENSE) — do whatever
 you like with it, no attribution required.
 
-Except `backend/app/rolls.py`: it's a port of the roll logic in godfat's
+Except `frontend/src/engine/rolls.js` and `backend/app/rolls.py`: they're ports
+of the roll logic in godfat's
 [battle-cats-rolls](https://gitlab.com/godfat/battle-cats-rolls) (Copyright Lin
-Jen-Shin) and stays under the [Apache License 2.0](LICENSES/battle-cats-rolls-LICENSE.txt).
-The banner data in `backend/data/godfat_bcen.json` is extracted from the same
-project (the game data in it is PONOS's).
+Jen-Shin) and stay under the [Apache License 2.0](LICENSES/battle-cats-rolls-LICENSE.txt).
+The banner data in `frontend/public/data/godfat_bcen.json` (and the backend's
+copy) is extracted from the same project (the game data in it is PONOS's).
 
 The bundled unit names and icons come from the
 [Battle Cats Wiki](https://battlecats.miraheze.org/) and remain subject to their

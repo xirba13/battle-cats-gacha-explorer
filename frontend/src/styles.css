@@ -99,7 +99,19 @@ body {
   padding: 10px 14px;
   margin-bottom: 12px;
 }
-.save-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.save-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.save-toggle { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
+/* A link whose data isn't what this browser saved: keep which? */
+.saved-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff7e0;
+  border: 1px solid #f0d58a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 6px 0;
+}
 .paste-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .paste-row input {
   flex: 1;

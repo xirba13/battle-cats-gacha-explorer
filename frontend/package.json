@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "node tests/owncode.test.mjs"
+    "test": "node --test"
   },
   "dependencies": {
     "react": "^18.3.1",

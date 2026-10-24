@@ -22,8 +22,9 @@ export default function Instructions({ disclaimer }) {
           </a>. Only the <b>BCEN (English)</b> version is supported.
         </li>
         <li>
-          <b>Nothing is stored on any server.</b> Your collection lives entirely
-          in the page URL (see below), so bookmark it or save your code.
+          <b>Everything runs in your browser.</b> Nothing is stored on or sent to
+          any server: your collection, seed and resources live in the page URL and
+          in this browser (see below).
         </li>
       </ul>
 
@@ -38,17 +39,25 @@ export default function Instructions({ disclaimer }) {
       <ul>
         <li>A grid mirroring the in-game Cat Guide order. <b>Click any tile</b> to
           toggle it owned / not-owned. Use the search box and filters to find units.</li>
-        <li><b>Saving your collection:</b> it's encoded into the page URL. Use
-          <b> Copy link</b> to save the whole thing, or <b>Copy code</b> to save just
-          a short code. If you come back later and lost the link, click
-          <b> Load a code…</b> and paste your code to restore everything.</li>
+        <li><b>Saving your collection:</b> your collection, seed and resources are saved
+          in this browser, so opening the site again brings them back. They're also in
+          the page URL: use <b>Copy link</b> to save the whole thing, or <b>Copy code</b> to
+          save just a short code, and <b>Load a code…</b> to restore it. That's how you move
+          them to another device or browser (the browser's copy stays on that one).</li>
+        <li>If you open a link whose data isn't what this browser saved (an old bookmark,
+          someone else's link), the page asks which one to keep; nothing is saved over
+          your copy until you choose.</li>
+        <li>On a shared computer, untick <b>Save in this browser</b> (it forgets the saved
+          copy). Private windows don't keep it, clearing your browser's site data deletes
+          it, and Safari on iPhone forgets it after about a week without a visit unless
+          the site is on your home screen — keep your link or code as a backup.</li>
       </ul>
 
       <h3>2 · Path Finder</h3>
       <ol>
         <li><b>Fetch Upcoming banners</b>: the banners running now and coming up, from godfat's open
-          data. The roll tables are computed here the same way godfat does, so his site being slow or
-          down doesn't matter.</li>
+          data (updated daily). The roll tables and paths are computed in your browser the same way
+          godfat does, so neither his site nor any server has to be up.</li>
         <li><b>Pick the banners</b> to search. Platinum/Legend banners are
           pre-selected when you have the matching tickets.</li>
         <li><b>Find optimal paths.</b> Each path's title shows the units you don't own yet

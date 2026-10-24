@@ -168,11 +168,11 @@ export async function decodeOwned(code, uidToId) {
 // ---- seed + resources (small, kept uncompressed) ------------------------- //
 const RES_KEYS = ["rare_tickets", "cat_food", "platinum_tickets", "legend_tickets"];
 
-function encodeResources(r) {
+export function encodeResources(r) {
   return RES_KEYS.map((k) => r[k] || 0).join(".");
 }
 
-function decodeResources(s) {
+export function decodeResources(s) {
   const out = { rare_tickets: 0, cat_food: 0, platinum_tickets: 0, legend_tickets: 0 };
   if (!s) return out;
   const parts = s.split(".");

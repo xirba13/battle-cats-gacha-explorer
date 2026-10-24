@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 update_godfat_data.py
-Regenerate backend/data/godfat_bcen.json — the banners, gacha pools and cats
-the app builds roll tables from — from godfat's open data (build/bc-en.yaml in
-https://gitlab.com/godfat/battle-cats-rolls, Apache License 2.0).
+Regenerate frontend/public/data/godfat_bcen.json — the banners, gacha pools
+and cats the site builds roll tables from — from godfat's open data
+(build/bc-en.yaml in https://gitlab.com/godfat/battle-cats-rolls, Apache
+License 2.0).
 
-The running server also refreshes this data from GitLab by itself every few
-hours; this script updates the copy that ships with the app (used at start-up
-and whenever GitLab can't be reached).
+A GitHub Actions job (.github/workflows/update-data.yml) runs this every day
+and commits the file when it changed; run it yourself to update it sooner.
+(--output backend/data/godfat_bcen.json updates the old server's copy.)
 
 Examples:
   python scrapers/update_godfat_data.py                     # download from GitLab
@@ -28,7 +29,7 @@ from app import godfat_data  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", help="read a saved bc-en.yaml instead of downloading it")
-    ap.add_argument("--output", default=os.path.abspath(godfat_data.DATA_FILE))
+    ap.add_argument("--output", default=os.path.join(ROOT, "frontend", "public", "data", "godfat_bcen.json"))
     args = ap.parse_args()
 
     if args.input:

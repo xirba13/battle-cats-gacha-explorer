@@ -10,7 +10,7 @@ const RARITY_CLASS = {
   Legendary: "r-legend",
 };
 
-export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoadCode, setError }) {
+export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoadCode, setError, saving }) {
   const [filter, setFilter] = useState("all"); // all | owned | missing
   const [rarity, setRarity] = useState("all");
   const [query, setQuery] = useState("");
@@ -58,6 +58,17 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
     }
   };
 
+  const toggleSaving = (e) => {
+    if (e.target.checked) {
+      saving.setEnabled(true);
+    } else if (window.confirm(
+      "Stop saving in this browser? This forgets the collection, seed and resources saved here. " +
+        "Your link and code still have them."
+    )) {
+      saving.setEnabled(false);
+    }
+  };
+
   const loadCode = async () => {
     const c = pasteVal.trim();
     if (!c) return;
@@ -71,10 +82,22 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
     <div className="cat-guide">
       <div className="save-panel">
         <div>
-          <b>Your collection is saved in the page URL.</b>{" "}
-          <span className="muted small">
-            Bookmark it or copy your code to restore it later — nothing is stored on any server.
-          </span>
+          {saving?.enabled ? (
+            <>
+              <b>Your collection, seed and resources are saved in this browser and in the page URL.</b>{" "}
+              <span className="muted small">
+                Opening the site again brings them back. To move them to another device, use the link or
+                your code — nothing is stored on any server.
+              </span>
+            </>
+          ) : (
+            <>
+              <b>Your collection is saved in the page URL.</b>{" "}
+              <span className="muted small">
+                Bookmark it or copy your code to restore it later — nothing is stored on any server.
+              </span>
+            </>
+          )}
         </div>
         <div className="save-actions">
           <button onClick={() => copy(window.location.href, "link")}>
@@ -84,6 +107,16 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
             {copied === "code" ? "✓ Copied!" : "Copy code"}
           </button>
           <button onClick={() => setPasteOpen((v) => !v)}>Load a code…</button>
+          {saving?.available ? (
+            <label className="save-toggle small" title="Untick on a shared computer">
+              <input type="checkbox" checked={saving.enabled} onChange={toggleSaving} />
+              Save in this browser
+            </label>
+          ) : (
+            <span className="muted small save-toggle">
+              This browser doesn't let sites save data here (a private window?), so keep your link or code.
+            </span>
+          )}
         </div>
         {pasteOpen && (
           <div className="paste-row">

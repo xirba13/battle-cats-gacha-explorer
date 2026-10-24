@@ -5,12 +5,9 @@ services:
       - "8000:8000"
     # Stateless: no volumes, no env, nothing persisted (godfat's data refreshed in RAM).
 
+  # The site runs entirely in the browser; the backend above is the old
+  # server version, kept until it's retired.
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
-    environment:
-      # The Vite dev-server proxies /api to the backend service.
-      BCPE_BACKEND: http://backend:8000
-    depends_on:
-      - backend

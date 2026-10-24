@@ -1,5 +1,5 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api.js";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { SEARCH_TIME_LIMIT_MS, api } from "../api.js";
 import TrackTable from "./TrackTable.jsx";
 
 const TYPE_BADGE = {
@@ -14,6 +14,12 @@ const RES_ICON = {
   platinum_tickets: "🟣",
   legend_tickets: "🌟",
 };
+
+// Days since the banner data was built (by the daily data job).
+function dataDaysOld(dataInfo) {
+  if (!dataInfo?.built_on) return 0;
+  return Math.floor((Date.now() - Date.parse(`${dataInfo.built_on}T00:00:00`)) / 86_400_000);
+}
 
 function CostLine({ cost }) {
   const parts = Object.entries(cost)
@@ -35,7 +41,11 @@ export default function PathFinder({
   const [result, setResult] = useState(null);
   const [followMsg, setFollowMsg] = useState(null);
   const [lastSig, setLastSig] = useState(null);
+  const [progress, setProgress] = useState(null);
   const resultsRef = useRef(null);
+  // The running search, stopped if you leave the tab.
+  const searchAbort = useRef(null);
+  useEffect(() => () => searchAbort.current?.abort(), []);
 
   const searchSig = useMemo(
     () => JSON.stringify({ seed, count, wishlist: wishlist.trim(), ids: [...selected].sort(), owned: owned.size }),
@@ -83,6 +93,9 @@ export default function PathFinder({
     setSearching(true);
     setResult(null);
     setFollowMsg(null);
+    setProgress(null);
+    const controller = new AbortController();
+    searchAbort.current = controller;
     try {
       const payload = {
         seed,
@@ -92,14 +105,15 @@ export default function PathFinder({
         owned: [...owned],
         wishlist: wishlist.trim() ? wishlist.split(",").map((s) => s.trim()).filter(Boolean) : null,
       };
-      setResult(await api.search(payload));
+      setResult(await api.search(payload, { onProgress: setProgress, signal: controller.signal }));
       setLastSig(searchSig);
       requestAnimationFrame(() =>
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
       );
     } catch (e) {
-      setError(e.message);
+      if (e.name !== "AbortError") setError(e.message);
     } finally {
+      if (searchAbort.current === controller) searchAbort.current = null;
       setSearching(false);
     }
   };
@@ -146,7 +160,7 @@ export default function PathFinder({
         <button disabled={!seed || loadingEvents} onClick={fetchEvents}>
           {loadingEvents ? "Fetching…" : "1 · Fetch Upcoming banners"}
         </button>
-        <span className="muted small">Roll tables are computed here from godfat's open data, so this is quick.</span>
+        <span className="muted small">Everything is computed in your browser from godfat's open data.</span>
       </div>
 
       {followMsg && <div className="follow-msg">✅ {followMsg}</div>}
@@ -159,6 +173,12 @@ export default function PathFinder({
             {dataInfo?.built_on ? ` (our copy from ${dataInfo.built_on})` : ""}. Special banners are
             pre-selected when you have the matching tickets.
           </p>
+          {dataDaysOld(dataInfo) > 3 && (
+            <p className="warn small">
+              ⚠️ This banner data is {dataDaysOld(dataInfo)} days old (it's normally updated every day), so
+              the newest banners may be missing.
+            </p>
+          )}
           <div className="banner-list">
             {events.map((ev) => {
               const badge = TYPE_BADGE[ev.banner_type] || TYPE_BADGE.normal;
@@ -191,7 +211,12 @@ export default function PathFinder({
 
       {searching && (
         <div className="loading">
-          Computing paths… many banners or lots of resources can take a while.
+          Computing paths…{" "}
+          {progress
+            ? `${progress.steps.toLocaleString()} states checked (${Math.round(progress.ms / 1000)} s).`
+            : ""}{" "}
+          Many banners or lots of resources take longer; it stops after {SEARCH_TIME_LIMIT_MS / 1000} s
+          with the best paths found so far.
         </div>
       )}
 
@@ -248,6 +273,12 @@ function Results({ result, onFollow }) {
       {result.unmatched?.length > 0 && (
         <p className="warn small">
           ⚠️ {result.unmatched.length} godfat name(s) had no master match: {result.unmatched.join(", ")}
+        </p>
+      )}
+      {result.search?.stopped && (
+        <p className="warn small">
+          ⏱️ The search stopped early ({STOPPED[result.search.stopped] || result.search.stopped}) and shows
+          the best paths it found; cheaper ones may exist. Fewer banners or a wishlist let it finish.
         </p>
       )}
       {result.solutions.length === 0 && (
@@ -316,6 +347,13 @@ function Results({ result, onFollow }) {
     </div>
   );
 }
+
+// Why a search stopped before exploring everything.
+const STOPPED = {
+  steps: "after 1.5 million steps",
+  time: `after ${SEARCH_TIME_LIMIT_MS / 1000} seconds`,
+  states: "to save memory",
+};
 
 function actionLabel(a) {
   switch (a.action_type) {

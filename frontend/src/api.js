@@ -1,37 +1,84 @@
-// Thin fetch wrapper around the stateless backend API.
-//
-// API base: empty by default, so calls are same-origin ("/api/...") — which is
-// what the Vite dev proxy and a single-origin reverse-proxy deploy both want.
-// For split hosting (static frontend on one host, backend on another), set
-// VITE_API_BASE at build time, e.g.:
-//   VITE_API_BASE=https://api.example.com pnpm build
-// (CORS is open on the backend, so cross-origin calls work.)
-const BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+// What the page used to ask the server, answered in the browser: the Cat
+// Guide list and godfat's banner data are static files (public/data/), roll
+// tables are built here, and path searches run in a Web Worker so the page
+// stays responsive. Nothing about your collection, seed or resources leaves
+// the page.
+import { Dataset } from "./engine/data.js";
+import { DISCLAIMER, MasterData, eventsRequest, followedRequest } from "./engine/services.js";
 
-async function req(method, path, body) {
-  const opts = { method, headers: {} };
-  if (body !== undefined) {
-    opts.headers["Content-Type"] = "application/json";
-    opts.body = JSON.stringify(body);
+// A search stops after this long, or once it holds this many states (memory,
+// for phones), and shows the best paths found so far.
+export const SEARCH_TIME_LIMIT_MS = 20_000;
+const MAX_STATES = (globalThis.navigator?.deviceMemory ?? 4) <= 2 ? 1_000_000 : 2_500_000;
+
+const loaded = {};
+function loadJson(name) {
+  if (!loaded[name]) {
+    loaded[name] = fetch(`${import.meta.env.BASE_URL}data/${name}`).then((res) => {
+      if (!res.ok) throw new Error(`Couldn't load ${name} (HTTP ${res.status}). Try again in a moment.`);
+      return res.json();
+    });
+    loaded[name].catch(() => delete loaded[name]); // a failed load is retried next time
   }
-  const res = await fetch(`${BASE}${path}`, opts);
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      detail = (await res.json()).detail || detail;
-    } catch {
-      /* ignore */
+  return loaded[name];
+}
+const loadMaster = () => loadJson("cat_guide_master.json");
+const loadData = () => loadJson("godfat_bcen.json");
+
+let dataset = null;
+let master = null;
+
+function search(body, { onProgress, signal } = {}) {
+  return Promise.all([loadData(), loadMaster()]).then(([data, masterJson]) => new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Search cancelled", "AbortError"));
+      return;
     }
-    throw new Error(detail);
-  }
-  return res.json();
+    const worker = new Worker(new URL("./engine/search.worker.js", import.meta.url), { type: "module" });
+    const finish = () => {
+      worker.terminate();
+      signal?.removeEventListener("abort", abort);
+    };
+    function abort() {
+      finish();
+      reject(new DOMException("Search cancelled", "AbortError"));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === "progress") {
+        onProgress?.(msg.progress);
+        return;
+      }
+      finish();
+      if (msg.type === "done") resolve(msg.result);
+      else reject(new Error(msg.message));
+    };
+    worker.onerror = (e) => {
+      finish();
+      reject(new Error(e.message || "The search failed."));
+    };
+    worker.postMessage({
+      data,
+      master: masterJson,
+      body,
+      options: { timeLimitMs: SEARCH_TIME_LIMIT_MS, maxStates: MAX_STATES },
+    });
+  }));
 }
 
 export const api = {
-  master: () => req("GET", "/api/master"),
-  events: (seed, count) =>
-    req("GET", `/api/events?seed=${encodeURIComponent(seed)}&count=${count || 100}`),
-  search: (payload) => req("POST", "/api/search", payload),
-  followed: (solution, owned, resources) =>
-    req("POST", "/api/followed", { solution, owned, resources }),
+  master: async () => {
+    const m = await loadMaster();
+    return { meta: m._meta, units: m.units, disclaimer: DISCLAIMER };
+  },
+  events: async (seed) => {
+    dataset ??= new Dataset(await loadData());
+    return eventsRequest(dataset, seed);
+  },
+  search,
+  followed: async (solution, owned, resources) => {
+    master ??= new MasterData(await loadMaster());
+    return followedRequest(master, { solution, owned, resources });
+  },
 };

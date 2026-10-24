@@ -1,0 +1,35 @@
+name: Update banner data
+# The site's banner data (events, gacha pools, cats) comes from godfat's
+# public GitLab repo. This rebuilds it every day and commits it when it
+# changed; the site is static, so that commit is what publishes new banners.
+on:
+  schedule:
+    - cron: "23 4 * * *" # every day at 04:23 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: update-data
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml==6.0.3
+      - name: Rebuild the data
+        run: python scrapers/update_godfat_data.py
+      - name: Commit it if it changed
+        run: |
+          if git diff --quiet -- frontend/public/data/godfat_bcen.json; then
+            echo "No change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data/godfat_bcen.json
+          git commit -m "data: update godfat banner data"
+          git pull --rebase
+          git push

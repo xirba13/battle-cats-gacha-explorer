@@ -15,7 +15,7 @@ import { encodeOwned, decodeOwned } from "../src/owncode.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const master = JSON.parse(
-  readFileSync(join(here, "..", "..", "backend", "data", "cat_guide_master.json"), "utf-8")
+  readFileSync(join(here, "..", "public", "data", "cat_guide_master.json"), "utf-8")
 ).units;
 
 function maps(units) {
