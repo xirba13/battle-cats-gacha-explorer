@@ -1,11 +1,39 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest (the repo clean-up) first,
-then the webapp's sections in the order they happened, then the early
+building the Battle Cats Gacha Explorer: the latest changes (deeper tables, the
+repo clean-up) first, then the webapp's sections in the order they happened,
+then the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Deeper tables: depth follows your resources
+
+The user asked to look deeper now that the search is faster. Measured on the
+2026-10-24 banners with 30 rare tickets, 45,000 cat food and 2 + 2 capsule
+tickets (364 pulls' worth):
+
+- **The fixed 100-row depth was the limit.** The best paths stopped at row
+  101, the bottom of the table, with most resources unspent. At 400 rows, the
+  search with every banner and no wishlist found a path collecting 92 units
+  instead of 57 (spending 29 tickets + 43,500 cat food); with half the Cat Guide
+  owned, 46 instead of 32.
+- **More search steps didn't help.** 2.7× and 13× the 1.5M-step cap found
+  exactly the same best paths, in 59 s and 134 s and with up to 2.3 GB, so the
+  cap stays.
+- So the depth is now `autoDepth(resources)`: the pulls they buy (tickets, 11
+  per 1500 cat food plus singles with the rest, capsule tickets) plus 20 rows
+  for dupe jumps, between 100 and 1000 rows. Typing a depth overrides it, and
+  "Auto" goes back.
+- **The cost:** searches cover more ground. The biggest (no wishlist) went
+  from 8 s to 21 s, reaching the 20 s limit; a three-unit wishlist search from
+  0.4 s to 2.2 s, finding the same path.
+- **Tried and dropped:** stopping the search a little below the deepest row
+  holding a wishlist unit, to keep wishlist searches fast. Wishlist units recur
+  all the way down (the capsules hold every uber; Rares repeat everywhere), so
+  there was nothing to cut: the extra time is real search over more reachable
+  rows, not wandering past the last target.
 
 ## Repo clean-up: a static site only
 

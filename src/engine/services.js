@@ -15,6 +15,20 @@ export const DISCLAIMER =
 export const DEFAULT_COUNT = 100;
 // Deepest table a search can ask for (the page allows 1000).
 export const MAX_COUNT = 1000;
+
+// How deep the roll tables should be for these resources: the pulls they buy
+// (rare tickets, 11 per 1500 cat food plus singles with the rest, Platinum and
+// Legend tickets) plus 20 rows for dupe jumps; at least the old default of
+// 100 rows (to look ahead), at most MAX_COUNT. A path can't go deeper than
+// the pulls it pays for, so this lets the best paths use all your resources.
+export function autoDepth(resources) {
+  const r = pathfinder.normalizeResources(resources);
+  const draws = Math.floor(r.cat_food / pathfinder.CAT_FOOD_PER_11_DRAW);
+  const singles = Math.floor((r.cat_food % pathfinder.CAT_FOOD_PER_11_DRAW) / pathfinder.CAT_FOOD_PER_PULL);
+  const pulls = r.rare_tickets + 11 * draws + singles + r.platinum_tickets + r.legend_tickets;
+  return Math.min(MAX_COUNT, Math.max(DEFAULT_COUNT, pulls + 20));
+}
+
 // Search-iteration cap, as on the server.
 export const MAX_STEPS = 1_500_000;
 

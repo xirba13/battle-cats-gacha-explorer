@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SEARCH_TIME_LIMIT_MS, api } from "../api.js";
+import { MAX_COUNT, autoDepth } from "../engine/services.js";
 import TrackTable from "./TrackTable.jsx";
 
 const TYPE_BADGE = {
@@ -34,7 +35,11 @@ export default function PathFinder({
   const [events, setEvents] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
   const [selected, setSelected] = useState(new Set());
-  const [count, setCount] = useState(100);
+  // Table depth: as deep as your resources can pull (so the best paths can use
+  // them all), unless you type your own number ("" while you're typing one).
+  const [depthTyped, setDepthTyped] = useState(null);
+  const autoCount = useMemo(() => autoDepth(resources), [resources]);
+  const count = depthTyped === null || depthTyped === "" ? autoCount : Math.min(MAX_COUNT, Math.max(20, depthTyped));
   const [wishlist, setWishlist] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -153,10 +158,17 @@ export default function PathFinder({
           Seed: <b>{seed || <span className="muted">— set it in the top bar —</span>}</b>
         </div>
         <label>
-          Depth (count)
-          <input type="number" min="20" max="1000" value={count}
-            onChange={(e) => setCount(Number(e.target.value))} />
+          Depth (rows){depthTyped === null ? " · auto" : ""}
+          <input type="number" min="20" max={MAX_COUNT} value={depthTyped ?? autoCount}
+            title="How far down the roll tables go. Auto: as deep as your resources can pull."
+            onChange={(e) => setDepthTyped(e.target.value === "" ? "" : Number(e.target.value))} />
         </label>
+        {depthTyped !== null && (
+          <button className="small" onClick={() => setDepthTyped(null)}
+            title="As deep as your resources can pull">
+            Auto ({autoCount})
+          </button>
+        )}
         <button disabled={!seed || loadingEvents} onClick={fetchEvents}>
           {loadingEvents ? "Fetching…" : "1 · Fetch Upcoming banners"}
         </button>

@@ -72,7 +72,9 @@ into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browse
    platinum tickets, legend tickets).
 3. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
    (special Platinum/Legend banners are pre-selected when you have the tickets),
-   then *Find optimal paths*. The search runs in the background in your browser:
+   then *Find optimal paths*. The tables go as deep as your resources can pull
+   (about one row per pull, so the best paths can use them all; you can type your
+   own depth). The search runs in the background in your browser:
    usually well under a second; a big one (many banners, no wishlist) stops after
    20 s and shows the best paths found so far. The search button locks until you
    change a banner/wishlist. Under the paths, the **track table** shows each searched
