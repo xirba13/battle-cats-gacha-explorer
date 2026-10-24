@@ -38,6 +38,16 @@ def test_compute_targets_excludes_owned(master):
     assert {"Tank Cat", "Axe Cat"} <= set(report.targets)
 
 
+def test_wishlist_wins_over_owned(master):
+    # An owned unit on the wishlist is still a target (another copy, say);
+    # the wishlist's other units are targets too, and nothing else is.
+    banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
+    owned = {master.index_for_name("Cat"), master.index_for_name("Axe Cat")}
+    report = services.compute_targets([banner], master, owned=owned, wishlist=["cat", "Tank Cat"])
+    assert report.targets == ["Cat", "Tank Cat"]
+    assert report.owned_in_banners == ["Axe Cat"]
+
+
 def test_run_search_returns_verified_solutions_with_seed(master):
     banner = _linear_banner(["Cat", "Tank Cat", "Axe Cat"])
     result = services.run_search([banner], master, owned=set(),

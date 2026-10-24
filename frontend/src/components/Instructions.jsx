@@ -58,6 +58,8 @@ export default function Instructions({ disclaimer }) {
         <li><b>Fetch Upcoming banners</b>: the banners running now and coming up, from godfat's open
           data (updated daily). The roll tables and paths are computed in your browser the same way
           godfat does, so neither his site nor any server has to be up.</li>
+        <li><b>Targets:</b> every unit you don't own in the picked banners, or, if you fill in the
+          <b> wishlist</b>, only the units on it, even ones you own (another copy, say).</li>
         <li><b>Pick the banners</b> to search. Platinum/Legend banners are
           pre-selected when you have the matching tickets.</li>
         <li><b>Find optimal paths.</b> Each path's title shows the units you don't own yet
@@ -65,8 +67,8 @@ export default function Instructions({ disclaimer }) {
           lists its exact pulls, ending at the last target; <b>click another path's title</b> to
           see its pulls instead.</li>
         <li>Under the paths, the <b>track table</b> shows each banner's roll table (track A and
-          track B, with an 11-draw column on guaranteed banners). The selected path is shaded, units
-          you don't own are in bold, and the striped position is where you'll be after the path.</li>
+          track B, with an 11-draw column on guaranteed banners). The selected path is shaded, the
+          targets are in bold, and the striped position is where you'll be after the path.</li>
         <li>Pull that path in-game, then click <b>“I followed this path.”</b> Every
           unit pulled is marked owned, your resources are decremented, and your{" "}
           <b>new seed is filled in automatically</b> (worked out the same way godfat does — just

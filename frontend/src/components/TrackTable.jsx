@@ -135,7 +135,7 @@ export default function TrackTable({ result, path }) {
       <div className="track-head">
         <h4>Track table</h4>
         <span className="legend small">
-          <span className="lg target">not owned</span>
+          <span className="lg target" title="Your wishlist units, or every unit you don't own if the wishlist is empty">target</span>
           <span className="lg on-path">selected path</span>
           <span className="lg next">next pull after the path</span>
         </span>

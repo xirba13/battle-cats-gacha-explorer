@@ -203,6 +203,11 @@ run in the browser.
   browser's copy until the player chooses. "Save in this browser" off forgets
   the copy and stops saving (`bcge.saveOff`). Storage that's blocked or full is
   ignored; the URL still works. Two open tabs: the last change wins.
+- **The wishlist wins over owned** (user request): with a wishlist, the
+  targets are exactly its units in the picked banners, owned or not (you may
+  want another copy); without one, every unit you don't own. The Python
+  reference (`services.compute_targets`) follows the same rule so the golden
+  results still hold, and a golden search checks it.
 - **The backend stays for now**, as the reference the golden results come
   from; it still deploys through `deploy.yml` until it's retired. Retiring it
   means moving the YAML extraction the data job uses (`godfat_data.py`) and the

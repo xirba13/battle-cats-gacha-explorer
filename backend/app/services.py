@@ -27,11 +27,12 @@ def compute_targets(
     owned: set[int],
     wishlist: Optional[list[str]] = None,
 ) -> TargetReport:
-    """Targets = unique unit names across the banners, minus owned units.
+    """Targets = unique unit names across the banners, minus owned units; or,
+    with a wishlist (godfat or master names), exactly the wishlist's units in
+    the banners, owned or not (the wishlist wins: you may want another copy).
 
     Matching is done godfat-name -> master -> global_index to decide ownership;
     the *godfat* name is kept as the search target (the roll tables use it).
-    A wishlist (godfat or master names) optionally narrows the targets.
     """
     seen: set[str] = set()
     targets: list[str] = []
@@ -57,13 +58,16 @@ def compute_targets(
                     is_owned = False
                 else:
                     is_owned = idx in owned
+                if wishlist_norm is not None:
+                    from .names import normalize
+                    if normalize(name) in wishlist_norm:
+                        targets.append(name)  # wished for: a target even if owned
+                    elif is_owned:
+                        owned_names.append(name)
+                    continue
                 if is_owned:
                     owned_names.append(name)
                     continue
-                if wishlist_norm is not None:
-                    from .names import normalize
-                    if normalize(name) not in wishlist_norm:
-                        continue
                 targets.append(name)
     return TargetReport(targets=targets, owned_in_banners=owned_names, unmatched=unmatched)
 

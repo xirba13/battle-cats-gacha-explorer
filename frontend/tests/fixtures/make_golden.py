@@ -141,6 +141,9 @@ def main() -> int:
          dict(seed="139026851", event_ids=now_ids, count=100, resources={}, owned=[], wishlist=wish)),
         ("everything owned", "now", "2026-10-23", 1_500_000,
          dict(seed="139026851", event_ids=now_ids, count=100, resources=res, owned=every_index, wishlist=None)),
+        ("wishlist wins over owned", "now", "2026-10-23", 1_500_000,
+         dict(seed="139026851", event_ids=now_ids, count=100, resources=res, owned=every_index,
+              wishlist=["Hip Hop Cat", "Sorceress Sidmi"])),
         ("every banner, no wishlist (big target mask)", "now", "2026-10-23", 20_000,
          dict(seed="139026851", event_ids=all_now, count=100, resources=res, owned=[], wishlist=None)),
     ]

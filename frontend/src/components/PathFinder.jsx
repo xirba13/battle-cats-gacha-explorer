@@ -194,7 +194,7 @@ export default function PathFinder({
           </div>
           <div className="pf-run">
             <label>
-              Wishlist (optional, comma-separated unit names)
+              Wishlist (optional: search only for these units, even ones you own; comma-separated)
               <input value={wishlist} placeholder="e.g. Balrog Cat, Vega Cat"
                 onChange={(e) => setWishlist(e.target.value)} />
             </label>
@@ -266,7 +266,7 @@ function Results({ result, onFollow }) {
     <div className="results">
       <h4>Results</h4>
       <p className="muted small">
-        Targeting {result.targets.length} not-owned unit(s):{" "}
+        Targeting {result.targets.length} {result.wishlist?.length ? "unit(s) from your wishlist" : "not-owned unit(s)"}:{" "}
         {result.targets.slice(0, 12).join(", ")}
         {result.targets.length > 12 ? "…" : ""}
       </p>

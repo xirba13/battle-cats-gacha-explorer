@@ -19,7 +19,8 @@ path search are computed on your device. It has three tabs:
    of the *Upcoming* banners in your browser (godfat's roll logic and his open
    data, updated daily, so bc.godfat.org being slow or down doesn't matter),
    computes optimal paths to
-   the units you don't own yet (each path ends at its last target), shows them on
+   the units you don't own yet, or to the ones on your wishlist even if you own
+   them (each path ends at its last target), shows them on
    a godfat-style **track table**, and offers an **"I followed this path"**
    button that marks every newly pulled unit as owned, decrements your resources,
    and **auto-fills your new seed**.

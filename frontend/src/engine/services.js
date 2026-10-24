@@ -35,10 +35,11 @@ export class MasterData {
 
 const UNIT_KEYS = ["unit", "alt_unit", "guaranteed_unit", "alt_guaranteed_unit"];
 
-// Targets = unique unit names across the banners, minus owned units. Matching
-// goes godfat name -> master -> global_index to decide ownership; the godfat
-// name stays the search target (the tables use it). A wishlist (godfat or
-// master names) optionally narrows the targets.
+// Targets = unique unit names across the banners, minus owned units; or, with
+// a wishlist (godfat or master names), exactly the wishlist's units in the
+// banners, owned or not (the wishlist wins: you may want another copy).
+// Matching goes godfat name -> master -> global_index to decide ownership;
+// the godfat name stays the search target (the tables use it).
 export function computeTargets(banners, master, owned, wishlist = null) {
   const seen = new Set();
   const targets = [];
@@ -54,11 +55,16 @@ export function computeTargets(banners, master, owned, wishlist = null) {
         const idx = master.indexForName(name);
         // Unknown to the master => can't confirm ownership => a candidate.
         if (idx === null) unmatched.push(name);
-        if (idx !== null && owned.has(idx)) {
+        const isOwned = idx !== null && owned.has(idx);
+        if (wish !== null) {
+          if (wish.has(normalize(name))) targets.push(name); // wished for: a target even if owned
+          else if (isOwned) ownedNames.push(name);
+          continue;
+        }
+        if (isOwned) {
           ownedNames.push(name);
           continue;
         }
-        if (wish !== null && !wish.has(normalize(name))) continue;
         targets.push(name);
       }
     }
@@ -226,7 +232,10 @@ export function searchRequest(dataset, master, body, {
     maxStates,
     onProgress,
   });
-  return { ...result, seed: body.seed, skipped: ingestion.skipped, data: dataInfo(dataset), disclaimer: DISCLAIMER };
+  return {
+    ...result, seed: body.seed, wishlist: body.wishlist ?? null, skipped: ingestion.skipped,
+    data: dataInfo(dataset), disclaimer: DISCLAIMER,
+  };
 }
 
 export function followedRequest(master, { solution, owned = [], resources = null }) {
