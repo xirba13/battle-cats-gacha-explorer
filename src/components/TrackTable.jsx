@@ -26,8 +26,9 @@ const RARITY_CLASS = {
 const halfRow = (pos) => 2 * (parseInt(pos, 10) - 1) + (pos.endsWith("B") ? 1 : 0);
 const posLabel = (h) => `${(h >> 1) + 1}${h % 2 ? "B" : "A"}`;
 
-// Column width from the longest text it shows (dupe lines use a smaller font).
-function columnWidth(banner, kind) {
+// Column width from the longest text it shows (dupe lines use a smaller
+// font), plus room for a wishlist place ("#12") when targets show them.
+function columnWidth(banner, kind, ranked) {
   let longest = 0;
   for (const e of Object.values(banner.rolls)) {
     const main = kind === "guaranteed" ? e.guaranteed_unit && `${e.guaranteed_unit} → 99B` : e.unit;
@@ -35,23 +36,25 @@ function columnWidth(banner, kind) {
     if (main) longest = Math.max(longest, main.length * 7.1);
     if (alt) longest = Math.max(longest, (alt.length + 11) * 6.1);
   }
-  return Math.round(Math.min(240, Math.max(110, longest + 20)));
+  return Math.round(Math.min(ranked ? 260 : 240, Math.max(110, longest + (ranked ? 44 : 20))));
 }
 
-export default function TrackTable({ result, path }) {
+// `ranks`: the targets' places on the wishlist searched (#1…), by name.
+export default function TrackTable({ result, path, ranks = null }) {
   const banners = result.banners;
+  const ranked = Boolean(ranks && Object.keys(ranks).length);
   // Columns per track: each banner's roll, plus its 11-draw column when it's a
   // guaranteed banner (like godfat's table).
   const cols = useMemo(() => {
     const out = [];
     banners.forEach((b, j) => {
-      out.push({ j, kind: "unit", width: columnWidth(b, "unit") });
+      out.push({ j, kind: "unit", width: columnWidth(b, "unit", ranked) });
       if (Object.values(b.rolls).some((e) => e.guaranteed_unit)) {
-        out.push({ j, kind: "guaranteed", width: columnWidth(b, "guaranteed") });
+        out.push({ j, kind: "guaranteed", width: columnWidth(b, "guaranteed", ranked) });
       }
     });
     return out;
-  }, [banners]);
+  }, [banners, ranked]);
   const rows = useMemo(
     () => Math.max(0, ...banners.flatMap((b) => Object.keys(b.rolls).map((p) => parseInt(p, 10)))),
     [banners]
@@ -95,13 +98,18 @@ export default function TrackTable({ result, path }) {
   useLayoutEffect(updateWindow, [updateWindow]);
   useEffect(() => {
     // Scroll events already fire at most once per frame; setWin skips no-op
-    // updates. (No requestAnimationFrame: it pauses in background tabs.)
+    // updates. (No requestAnimationFrame: it pauses in background tabs.) The
+    // table's size changes with the window, and from nothing when the tab
+    // it's on is shown again.
     const wrap = wrapRef.current;
     wrap.addEventListener("scroll", updateWindow, { passive: true });
-    window.addEventListener("resize", updateWindow);
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateWindow);
+    if (resized) resized.observe(wrap);
+    else window.addEventListener("resize", updateWindow);
     return () => {
       wrap.removeEventListener("scroll", updateWindow);
-      window.removeEventListener("resize", updateWindow);
+      if (resized) resized.disconnect();
+      else window.removeEventListener("resize", updateWindow);
     };
   }, [updateWindow]);
 
@@ -119,6 +127,7 @@ export default function TrackTable({ result, path }) {
         cols={cols}
         units={units}
         targets={targets}
+        ranks={ranks}
         marks={marks.get(h) || ""}
         isNext={h === endH}
         spacerB={h === start ? n + 1 : 0}
@@ -135,7 +144,7 @@ export default function TrackTable({ result, path }) {
       <div className="track-head">
         <h4>Track table</h4>
         <span className="legend small">
-          <span className="lg target" title="Your wishlist units, or every unit you don't own if the wishlist is empty">target</span>
+          <span className="lg target" title="The units searched for: your ticked wishlist units (#: their place on it), or every unit you don't own">target</span>
           <span className="lg on-path">selected path</span>
           <span className="lg next">next pull after the path</span>
         </span>
@@ -177,22 +186,33 @@ export default function TrackTable({ result, path }) {
   );
 }
 
-const TrackRow = memo(function TrackRow({ h, banners, cols, units, targets, marks, isNext, spacerB }) {
+const TrackRow = memo(function TrackRow({ h, banners, cols, units, targets, ranks, marks, isNext, spacerB }) {
   const pos = posLabel(h);
   return (
     <tr>
       <th className={`pos ${isNext ? "next" : ""}`} rowSpan={2}>{pos}</th>
       {cols.map((c, k) => (
-        <Cell key={k} pos={pos} col={c} banner={banners[c.j]} units={units} targets={targets} marks={marks} />
+        <Cell key={k} pos={pos} col={c} banner={banners[c.j]} units={units} targets={targets} ranks={ranks} marks={marks} />
       ))}
       {spacerB > 0 && <td className="spacer" colSpan={spacerB} />}
     </tr>
   );
 }, (a, b) =>
-  a.h === b.h && a.banners === b.banners && a.cols === b.cols && a.targets === b.targets &&
+  a.h === b.h && a.banners === b.banners && a.cols === b.cols && a.targets === b.targets && a.ranks === b.ranks &&
   a.marks === b.marks && a.isNext === b.isNext && a.spacerB === b.spacerB);
 
-function Cell({ pos, col, banner, units, targets, marks }) {
+// A unit's name, with its wishlist place when it's a ranked target.
+function UnitName({ name, targets, ranks }) {
+  const rank = targets.has(name) ? ranks?.[name] : null;
+  return (
+    <span className={`unit ${targets.has(name) ? "target" : ""}`}>
+      {rank && <span className="rank-tag">#{rank}</span>}
+      {name}
+    </span>
+  );
+}
+
+function Cell({ pos, col, banner, units, targets, ranks, marks }) {
   const e = banner.rolls[pos];
   const g = col.kind === "guaranteed";
   const main = e && (g ? e.guaranteed_unit : e.unit);
@@ -212,13 +232,13 @@ function Cell({ pos, col, banner, units, targets, marks }) {
   return (
     <td className={cls.filter(Boolean).join(" ")} rowSpan={2} title={title}>
       <div className={`main ${mainOn && alt ? "on-path" : ""}`}>
-        <span className={`unit ${targets.has(main) ? "target" : ""}`}>{main}</span>
+        <UnitName name={main} targets={targets} ranks={ranks} />
         {mainNext && <span className="jump"> → {mainNext}</span>}
       </div>
       {alt && (
         <div className={`dupe ${altOn ? "on-path" : ""}`}>
           <span className="dupe-tag">dupe</span>
-          <span className={`unit ${targets.has(alt) ? "target" : ""}`}>{alt}</span>
+          <UnitName name={alt} targets={targets} ranks={ranks} />
           {altNext && <span className="jump">→ {altNext}</span>}
         </div>
       )}

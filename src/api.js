@@ -4,7 +4,7 @@
 // stays responsive. Nothing about your collection, seed or resources leaves
 // the page.
 import { Dataset } from "./engine/data.js";
-import { DISCLAIMER, MasterData, eventsRequest, followedRequest } from "./engine/services.js";
+import { DISCLAIMER, MasterData, eventsRequest, followedRequest, planRequest } from "./engine/services.js";
 
 // A search stops after this long, or once it holds this many states (memory,
 // for phones), and shows the best paths found so far.
@@ -72,6 +72,7 @@ export const api = {
     const m = await loadMaster();
     return { meta: m._meta, units: m.units, disclaimer: DISCLAIMER };
   },
+  // The Upcoming banners, each with the units it can give.
   events: async (seed) => {
     dataset ??= new Dataset(await loadData());
     return eventsRequest(dataset, seed);
@@ -80,5 +81,12 @@ export const api = {
   followed: async (solution, owned, resources) => {
     master ??= new MasterData(await loadMaster());
     return followedRequest(master, { solution, owned, resources });
+  },
+  // A saved plan's tables and path, built again (quick: no search).
+  plan: async (plan) => {
+    const [data, masterJson] = await Promise.all([loadData(), loadMaster()]);
+    dataset ??= new Dataset(data);
+    master ??= new MasterData(masterJson);
+    return planRequest(dataset, master, plan);
   },
 };

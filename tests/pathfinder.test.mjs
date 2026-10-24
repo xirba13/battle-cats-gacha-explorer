@@ -294,3 +294,67 @@ test("a guaranteed banner never plans a plain 11-roll", () => {
   const sols = pf.findPaths([banner], ["u20"], { resources: { cat_food: 3000 } });
   assert.ok(!sols.some((s) => s.actions.some((a) => a.action_type === pf.ACTION_MULTI_11)));
 });
+
+// --- Ranking by a wishlist's order ---------------------------------------------
+
+test("a wishlist's order decides between two ubers at the same spot", () => {
+  // Row 2 holds UberX on one banner and UberY on the other: a path gets one.
+  const banners = [linearBanner(["j1", "UberX", "j3"], { name: "B1" }), linearBanner(["k1", "UberY", "k3"], { name: "B2" })];
+  for (const ranking of [pf.RANK_ORDER, pf.RANK_MOST]) {
+    for (const wanted of [["UberY", "UberX"], ["UberX", "UberY"]]) {
+      const sols = pf.findPaths(banners, wanted, { resources: { rare_tickets: 2 }, ranking });
+      assert.deepEqual(sols[0].collected_units, [wanted[0]], `${ranking}, ${wanted[0]} first`);
+      for (const s of sols) assertVerifies(banners, s);
+    }
+  }
+});
+
+// X only comes from an 11-draw's guaranteed uber (1500 cat food, all there
+// is); the same food pays for 10 single pulls on the second banner instead.
+const xOrSingles = (singles) => [
+  linearBanner(Array.from({ length: 12 }, (_, i) => `j${i}`), { name: "G", guaranteed: ["1A", "X", "12A"] }),
+  linearBanner(singles, { name: "S" }),
+];
+const pathsFor = (banners, targets, ranking) =>
+  pf.findPaths(banners, targets, { resources: { cat_food: 1500 }, ranking }).map((s) => s.collected_units);
+
+test("rankings: the top of the list first takes the #1 over more units", () => {
+  // X alone (#1) or C, D, E (#2-#4): the top of the list takes X; most units
+  // (like no wishlist) takes the three.
+  const banners = xOrSingles(["C", "D", "E"]);
+  assert.deepEqual(pathsFor(banners, ["X", "C", "D", "E"], pf.RANK_ORDER)[0], ["X"]);
+  assert.deepEqual(pathsFor(banners, ["X", "C", "D", "E"], pf.RANK_MOST)[0], ["C", "D", "E"]);
+  assert.deepEqual(pathsFor(banners, ["X", "C", "D", "E"], pf.RANK_COUNT)[0], ["C", "D", "E"]);
+});
+
+test("rankings: most units takes the cheaper of two paths with as many", () => {
+  // X (#1, an 11-draw: 1500 cat food) or B (#2, one 150 single): one unit
+  // either way. Most units takes the cheaper, B, then X; the top of the list
+  // takes X.
+  const banners = xOrSingles(["B"]);
+  assert.deepEqual(pathsFor(banners, ["X", "B"], pf.RANK_MOST), [["B"], ["X"]]);
+  assert.deepEqual(pathsFor(banners, ["X", "B"], pf.RANK_ORDER)[0], ["X"]);
+});
+
+test("rankings: paths with as many targets, for as much, come in the wishlist's order", () => {
+  // Rows 1-2 each hold two targets (one per banner): every path gets two, for
+  // two tickets. With D wanted most, then C, B, A: both, then D's, then C's,
+  // then neither.
+  const banners = [linearBanner(["A", "B"], { name: "B1" }), linearBanner(["C", "D"], { name: "B2" })];
+  const sols = pf.findPaths(banners, ["D", "C", "B", "A"], { resources: { rare_tickets: 2 }, ranking: pf.RANK_MOST });
+  assert.deepEqual(sols.map((s) => [...s.collected_units].sort().join("")), ["CD", "AD", "BC", "AB"]);
+  assert.throws(() => pf.findPaths(banners, ["A"], { ranking: "nope" }), /Unknown ranking/);
+});
+
+// --- A path from its steps ----------------------------------------------------------
+
+test("replaying a path's steps gives the path back", () => {
+  const [banners, sols] = searchSample(10);
+  const isTarget = (u) => TARGETS.includes(u);
+  for (const s of sols) {
+    const actions = pf.replaySteps(banners, pf.stepsOf(s), { rareTickets: 30, isTarget });
+    assert.deepEqual(pf.summarize(actions), s);
+  }
+  // A step past the end of the table can't be replayed.
+  assert.equal(pf.replaySteps([linearBanner(["a"])], [0, 0], { rareTickets: 5 }), null);
+});

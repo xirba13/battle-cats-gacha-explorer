@@ -36,12 +36,20 @@ const res = (rt, cf, pt, lt) => ({ rare_tickets: rt, cat_food: cf, platinum_tick
 
 test("what's saved comes back", async () => {
   const ownedCode = await encodeOwned(new Set([0, 5, 100]), idToUid);
-  bs.save({ ownedCode, seed: "139026851", resources: res(30, 45000, 2, 2), tab: "paths" });
+  const state = { ownedCode, seed: "139026851", resources: res(30, 45000, 2, 2), tab: "paths", wishCode: "AQAB", planCode: "AQCD" };
+  bs.save(state);
   const back = bs.loadSaved();
-  assert.deepEqual({ ...back, savedAt: undefined },
-    { ownedCode, seed: "139026851", resources: res(30, 45000, 2, 2), tab: "paths", savedAt: undefined });
+  assert.deepEqual({ ...back, savedAt: undefined }, { ...state, savedAt: undefined });
   assert.ok(!Number.isNaN(Date.parse(back.savedAt)));
   assert.ok(bs.canSave());
+});
+
+test("a copy saved before wishlists and plans comes back without them", () => {
+  fake.setItem("bcge.saved.v1", JSON.stringify({ o: "", s: "5", r: "1.2.3.4", t: "guide", at: "2026-10-24T10:00:00Z" }));
+  const back = bs.loadSaved();
+  assert.equal(back.wishCode, "");
+  assert.equal(back.planCode, "");
+  assert.equal(back.seed, "5");
 });
 
 test("turning saving off forgets the saved copy; back on saves again", () => {
@@ -58,10 +66,12 @@ test("a broken saved value is ignored", () => {
   assert.equal(bs.loadSaved(), null);
 });
 
-test("hasData: owned units, a seed or any resources", () => {
+test("hasData: owned units, a seed, any resources, wishlists or a plan", () => {
   assert.equal(bs.hasData({ ownedCode: "", seed: "", resources: res(0, 0, 0, 0) }), false);
   assert.equal(bs.hasData({ ownedCode: "", seed: "5", resources: res(0, 0, 0, 0) }), true);
   assert.equal(bs.hasData({ ownedCode: "", seed: "", resources: res(0, 150, 0, 0) }), true);
+  assert.equal(bs.hasData({ ownedCode: "", seed: "", resources: res(0, 0, 0, 0), wishCode: "AQAB" }), true);
+  assert.equal(bs.hasData({ ownedCode: "", seed: "", resources: res(0, 0, 0, 0), planCode: "AQCD" }), true);
 });
 
 test("states compare by the units they hold, not by how they're encoded", async () => {
@@ -74,6 +84,9 @@ test("states compare by the units they hold, not by how they're encoded", async 
   assert.equal((await bs.compareStates(a, { ...a, ownedCode: raw }, uidToId)).same, true);
   assert.equal((await bs.compareStates(a, { ...a, seed: "8" }, uidToId)).same, false);
   assert.equal((await bs.compareStates(a, { ...a, resources: res(1, 2, 3, 5) }, uidToId)).same, false);
+  assert.equal((await bs.compareStates(a, { ...a, wishCode: "AQAB" }, uidToId)).same, false);
+  assert.equal((await bs.compareStates(a, { ...a, planCode: "AQCD" }, uidToId)).same, false);
+  assert.equal((await bs.compareStates({ ...a, wishCode: "" }, a, uidToId)).same, true);
   const other = await encodeOwned(new Set([0, 1]), idToUid);
   const cmp = await bs.compareStates(a, { ...a, ownedCode: other }, uidToId);
   assert.equal(cmp.same, false);

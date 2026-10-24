@@ -43,11 +43,13 @@ export const BANNER_LEGEND = "legend";
 
 // A roll table plus its name and type. `rolls` maps "1A", "1B"... to
 // {unit, unit_seed, alt_unit, alt_next, alt_seed, guaranteed_unit, ...}.
+// `eventId` is godfat's event it was built from, if any.
 export class Banner {
-  constructor(name, rolls, type = BANNER_NORMAL) {
+  constructor(name, rolls, type = BANNER_NORMAL, eventId = null) {
     this.name = name;
     this.rolls = rolls;
     this.type = type;
+    this.eventId = eventId;
     // A guaranteed banner's 11-draw always ends in its guaranteed uber; only
     // banners without guaranteed cells get plain 11-rolls.
     this.hasGuaranteed = Object.values(rolls).some((e) => "guaranteed_unit" in e);
@@ -138,16 +140,29 @@ export const MODE_STRICT = "STRICT";
 export const MODE_BEST_EFFORT = "BEST_EFFORT";
 export const MODE_RESOURCE_LIMIT = "RESOURCE_LIMIT";
 
+// How paths are ranked: by how many targets they collect (the Python's way),
+// or as a wishlist chooses, with the targets given most wanted first.
+export const RANK_COUNT = "count";
+// The top of the list first: a path with the #1 target beats every path
+// without it, then #2 decides, and so on.
+export const RANK_ORDER = "order";
+// The most targets, whichever they are; between paths with as many, the
+// cheaper one, then the one with the more wanted targets.
+export const RANK_MOST = "most";
+export const RANKINGS = [RANK_COUNT, RANK_ORDER, RANK_MOST];
+
 // Rough scalarisation used only for heap ordering (Pareto domination guards
 // correctness). Tickets are weighted by their cat-food value.
 const WEIGHTS = [CAT_FOOD_PER_PULL, 1, CAT_FOOD_PER_11_DRAW, CAT_FOOD_PER_11_DRAW];
 const scalar = (r) => WEIGHTS[0] * r[0] + WEIGHTS[1] * r[1] + WEIGHTS[2] * r[2] + WEIGHTS[3] * r[3];
 
 // Python's heap compares (-collected count, scalar cost, *resources, push
-// counter); the counter is unique, so the pop order is fully determined.
+// counter); the counter is unique, so the pop order is fully determined. A
+// wishlist's ranking also uses n and m (see findPaths); by count, m is 0.
 function before(a, b) {
   if (a.n !== b.n) return a.n < b.n;
   if (a.s !== b.s) return a.s < b.s;
+  if (a.m !== b.m) return a.m < b.m;
   for (let i = 0; i < 4; i++) if (a.res[i] !== b.res[i]) return a.res[i] < b.res[i];
   return a.c < b.c;
 }
@@ -196,21 +211,6 @@ class Heap {
   }
 }
 
-// Count set bits of a target mask (a number, or a BigInt past 31 targets).
-function popcount(x) {
-  if (typeof x === "bigint") {
-    let n = 0;
-    for (const ch of x.toString(2)) if (ch === "1") n++;
-    return n;
-  }
-  let n = 0;
-  while (x) {
-    x &= x - 1;
-    n++;
-  }
-  return n;
-}
-
 const SEP = "\u0001"; // can't appear in a unit name
 
 // Search for resource-efficient pull paths that collect `targets`.
@@ -219,6 +219,8 @@ const SEP = "\u0001"; // can't appear in a unit name
 //     unlimited, but Platinum/Legend pulls stay capped by `bannerLimits`.
 //   bannerLimits: Map(banner index -> max pulls); special banners default to
 //     their ticket count.
+//   ranking: RANK_COUNT, or a wishlist's ranking (RANK_ORDER / RANK_MOST)
+//     with `targets` most wanted first.
 //   maxSteps: search-iteration cap. timeLimitMs / maxStates: optional caps on
 //     time and on states kept (memory); the Python has neither. `stats.stopped`
 //     says which one stopped it early ("steps" / "time" / "states").
@@ -234,6 +236,7 @@ export function findPaths(banners, targets, {
   resources = null,
   bannerLimits = null,
   mode = MODE_RESOURCE_LIMIT,
+  ranking = RANK_COUNT,
   maxSteps = 2_000_000,
   maxSolutions = 50,
   startPos = "1A",
@@ -243,6 +246,7 @@ export function findPaths(banners, targets, {
   progressEvery = 50_000,
   stats = null,
 } = {}) {
+  if (!RANKINGS.includes(ranking)) throw new Error(`Unknown ranking: ${ranking}`);
   banners = coerceBanners(banners);
   const res0 = normalizeResources(resources);
   const limits = new Map(bannerLimits || []);
@@ -268,12 +272,17 @@ export function findPaths(banners, targets, {
     return u;
   };
 
-  const targetList = [...new Set(targets)].sort();
+  // Ranked by a wishlist, the targets keep its order (most wanted first).
+  const ranked = ranking !== RANK_COUNT;
+  const targetList = ranked ? [...new Set(targets)] : [...new Set(targets)].sort();
   const targetToId = new Map(targetList.map((name, i) => [name, i]));
-  // Up to 31 targets fit a 32-bit mask; more need a BigInt.
+  // Up to 31 targets fit a 32-bit mask; more need a BigInt. Ranked, the more
+  // wanted a target, the higher its bit: comparing two masks then compares
+  // what they collect in the wishlist's order.
   const big = targetList.length > 31;
   const ZERO = big ? 0n : 0;
-  const bits = targetList.map((_, i) => (big ? 1n << BigInt(i) : 2 ** i));
+  const bitOf = (i) => (ranked ? targetList.length - 1 - i : i);
+  const bits = targetList.map((_, i) => (big ? 1n << BigInt(bitOf(i)) : 2 ** bitOf(i)));
   const allTargets = big ? (1n << BigInt(targetList.length)) - 1n : 2 ** targetList.length - 1;
 
   const resLimitMode = mode === MODE_RESOURCE_LIMIT;
@@ -366,10 +375,21 @@ export function findPaths(banners, targets, {
 
   const pq = new Heap();
   let counter = 0;
-  // A queued state; `n` is minus the number of targets collected.
+  // A queued state, popped lowest n first, then by cost, then lowest m. `n`
+  // is minus the number of targets collected, but for RANK_ORDER minus its
+  // mask; RANK_MOST breaks ties on the mask (m), so between paths with as
+  // many targets and the same cost, the more wanted targets win.
+  const byMask = ranking === RANK_ORDER;
+  const tieOnMask = ranking === RANK_MOST;
   const push = (pos, collected, mkey, count, last, usage, res, node) => {
-    pq.push({ n: -count, s: scalar(res), res, c: counter++, pos, collected, mkey, last, usage, node });
+    pq.push({
+      n: byMask ? -collected : -count, m: tieOnMask ? -collected : 0, s: scalar(res), res, c: counter++,
+      pos, collected, mkey, last, usage, node,
+    });
   };
+  // The targets a popped state collected (unused, so 0, when ranking by the
+  // mask).
+  const countOf = (st) => (byMask ? 0 : -st.n);
   // Python's _try_push: skip a state reached at least as cheaply before.
   const admit = (pos, mkey, last, usage, res) => {
     const key = visitedKey(pos, mkey, last, usage);
@@ -390,108 +410,60 @@ export function findPaths(banners, targets, {
 
   // An 11-draw from `pos`: 10 normal pulls, then the guaranteed uber `gUnit`
   // (guaranteed banner) or an 11th normal pull (gUnit null). Null if it runs
-  // past the table. `units` only when `keepUnits` (replaying).
-  const draw11 = (pos, last, rolls, gUnit, collected, keepUnits) => {
-    const units = keepUnits ? [] : null;
-    const hits = [];
+  // past the table. `hits`: how many new targets it pulls.
+  const draw11 = (pos, last, rolls, gUnit, collected) => {
+    let hits = 0;
     let p = pos;
     let l = last;
     let c = collected;
-    let seed = null;
     for (let i = gUnit ? 10 : 11; i > 0; i--) {
-      const [u, np, , s] = getNextPosNormal(p, null, rolls, l);
+      const [u, np] = getNextPosNormal(p, null, rolls, l);
       if (!u || !np) return null;
       let isT;
       [c, isT] = applyUnit(u, c);
-      if (isT) hits.push(u);
-      if (units) units.push(u);
+      if (isT) hits += 1;
       p = np;
       l = u;
-      seed = s;
     }
     if (gUnit) {
       let isT;
       [c, isT] = applyUnit(gUnit, c);
-      if (isT) hits.push(gUnit);
-      if (units) units.push(gUnit);
+      if (isT) hits += 1;
       l = gUnit;
     }
-    return { collected: c, hits, last: l, next: p, seed, units };
+    return { collected: c, hits, last: l, next: p };
   };
 
   // The full actions of a path, rebuilt by replaying its steps from the start
   // exactly as the search took them.
+  const isTarget = (unit) => targetToId.has(unit);
   const replay = (node) => {
     const codes = [];
     for (let cur = node; cur >= 0; cur = stepParent[cur]) codes.push(stepCode[cur]);
-    const actions = [];
-    let pos = startPos;
-    let last = null;
-    let collected = ZERO;
-    let ticketsUsed = 0;
-    for (let i = codes.length - 1; i >= 0; i--) {
-      const bIdx = codes[i] >> 1;
-      const banner = banners[bIdx];
-      const rolls = banner.rolls;
-      const entry = rolls[pos];
-      if (codes[i] & 1) {
-        let act;
-        let d;
-        if (banner.hasGuaranteed) {
-          const [gUnit, gNext, gSeed] = guaranteedFor(entry, last);
-          d = draw11(pos, last, rolls, gUnit, collected, true);
-          act = action(bIdx, ACTION_GUARANTEED_11, PAY_CAT_FOOD, pos, gNext, d.units, d.hits, COST_11, gSeed);
-        } else {
-          d = draw11(pos, last, rolls, null, collected, true);
-          act = action(bIdx, ACTION_MULTI_11, PAY_CAT_FOOD, pos, d.next, d.units, d.hits, COST_11, d.seed);
-        }
-        actions.push(act);
-        pos = act.position_to;
-        last = d.last;
-        collected = d.collected;
-        continue;
-      }
-      const [unit, nextP, , seed] = getNextPosNormal(pos, entry.unit, rolls, last);
-      const [c, isTarget] = applyUnit(unit, collected);
-      const hits = isTarget ? [unit] : [];
-      if (banner.type === BANNER_NORMAL) {
-        const useTicket = ticketsUsed < rareTicketBudget;
-        if (useTicket) ticketsUsed += 1;
-        actions.push(action(bIdx, ACTION_SINGLE, useTicket ? PAY_RARE_TICKET : PAY_CAT_FOOD, pos, nextP,
-          [unit], hits, useTicket ? COST_TICKET : COST_FOOD, seed));
-      } else {
-        const platinum = banner.type === BANNER_PLATINUM;
-        actions.push(action(bIdx, platinum ? ACTION_PLATINUM : ACTION_LEGEND,
-          platinum ? PAY_PLATINUM_TICKET : PAY_LEGEND_TICKET, pos, nextP, [unit], hits,
-          platinum ? COST_PLATINUM : COST_LEGEND, seed));
-      }
-      pos = nextP;
-      last = unit;
-      collected = c;
-    }
-    return actions;
+    return replaySteps(banners, codes.reverse(), { rareTickets: rareTicketBudget, isTarget, startPos });
   };
 
   let solutions = [];
-  let maxFound = 0;
+  let bestN = null; // the heap key n of the paths kept
   let iterations = 0;
   let stopped = null;
   const t0 = Date.now();
 
+  // Keep the best paths: those with the lowest n (the most targets, or the
+  // best mask); a better one starts the list over.
   const record = (st) => {
-    const count = -st.n;
-    if (count === 0) return;
-    if (count > maxFound) {
-      maxFound = count;
-      solutions = [[replay(st.node), st.pos, st.collected]];
-    } else if (count === maxFound && solutions.length < maxSolutions) {
-      solutions.push([replay(st.node), st.pos, st.collected]);
+    if (st.collected === ZERO) return;
+    if (bestN === null || st.n < bestN) {
+      bestN = st.n;
+      solutions = [[replay(st.node), st.n, st.m]];
+    } else if (st.n === bestN && solutions.length < maxSolutions) {
+      solutions.push([replay(st.node), st.n, st.m]);
     }
   };
 
   const expandNormal = (bIdx, banner, entry, st) => {
     const { pos, collected, mkey, last, usage, res, node } = st;
-    const count = -st.n;
+    const count = countOf(st);
     const [rt, cf, pt, lt] = res;
     const k = slotOf[bIdx];
     const newUsage = k < 0 ? usage : bump(usage, k);
@@ -516,18 +488,18 @@ export function findPaths(banners, targets, {
       // guaranteed cell here = the draw runs past the table: skip it.)
       const [gUnit, gNext] = guaranteedFor(entry, last);
       if (gUnit && gNext && withinCaps(res11)) {
-        const d = draw11(pos, last, banner.rolls, gUnit, collected, false);
-        const newKey = d && d.hits.length ? maskKey(d.collected) : mkey;
+        const d = draw11(pos, last, banner.rolls, gUnit, collected);
+        const newKey = d && d.hits ? maskKey(d.collected) : mkey;
         if (d && admit(gNext, newKey, gUnit, newUsage, res11)) {
-          push(gNext, d.collected, newKey, count + d.hits.length, gUnit, newUsage, res11, addStep(node, 2 * bIdx + 1));
+          push(gNext, d.collected, newKey, count + d.hits, gUnit, newUsage, res11, addStep(node, 2 * bIdx + 1));
         }
       }
     } else if (withinCaps(res11)) {
       // No guaranteed cells: a plain 11-roll is 11 normal pulls for 1500 food.
-      const d = draw11(pos, last, banner.rolls, null, collected, false);
-      const newKey = d && d.hits.length ? maskKey(d.collected) : mkey;
+      const d = draw11(pos, last, banner.rolls, null, collected);
+      const newKey = d && d.hits ? maskKey(d.collected) : mkey;
       if (d && admit(d.next, newKey, d.last, newUsage, res11)) {
-        push(d.next, d.collected, newKey, count + d.hits.length, d.last, newUsage, res11, addStep(node, 2 * bIdx + 1));
+        push(d.next, d.collected, newKey, count + d.hits, d.last, newUsage, res11, addStep(node, 2 * bIdx + 1));
       }
     }
   };
@@ -535,7 +507,6 @@ export function findPaths(banners, targets, {
   // Platinum/Legend Capsules: single pulls, their own tickets, no 11-draw.
   const expandSpecial = (bIdx, banner, entry, st) => {
     const { pos, collected, mkey, last, usage, res, node } = st;
-    const count = -st.n;
     const [rt, cf, pt, lt] = res;
     const [unit, nextP] = getNextPosNormal(pos, entry.unit, banner.rolls, last);
     if (!unit || !nextP) return;
@@ -545,7 +516,7 @@ export function findPaths(banners, targets, {
     const newRes = banner.type === BANNER_PLATINUM ? [rt, cf, pt + 1, lt] : [rt, cf, pt, lt + 1];
     const newKey = isTarget ? maskKey(newCollected) : mkey;
     if (!withinCaps(newRes) || !admit(nextP, newKey, unit, newUsage, newRes)) return;
-    push(nextP, newCollected, newKey, count + (isTarget ? 1 : 0), unit, newUsage, newRes, addStep(node, 2 * bIdx));
+    push(nextP, newCollected, newKey, countOf(st) + (isTarget ? 1 : 0), unit, newUsage, newRes, addStep(node, 2 * bIdx));
   };
 
   while (pq.size) {
@@ -569,7 +540,7 @@ export function findPaths(banners, targets, {
     const st = pq.pop();
     if (mode === MODE_STRICT) {
       if (st.collected === allTargets) {
-        solutions.push([replay(st.node), st.pos, st.collected]);
+        solutions.push([replay(st.node), st.n, st.m]);
         if (solutions.length >= maxSolutions) break;
         continue;
       }
@@ -602,16 +573,18 @@ export function findPaths(banners, targets, {
 function coerceBanners(banners) {
   return [...banners].map((b, i) => {
     if (b instanceof Banner) return b;
-    if (b && typeof b === "object" && "rolls" in b) return new Banner(b.name ?? `Banner ${i + 1}`, b.rolls, b.type);
+    if (b && typeof b === "object" && "rolls" in b) return new Banner(b.name ?? `Banner ${i + 1}`, b.rolls, b.type, b.eventId ?? null);
     if (b && typeof b === "object") return new Banner(`Banner ${i + 1}`, b, BANNER_NORMAL);
     throw new TypeError(`Banner ${i} is not a Banner or roll table`);
   });
 }
 
+// [actions, n, m] (n and m: the path's heap keys) -> the solutions, best
+// first.
 function buildSolutions(rawSolutions) {
   const out = [];
   const seen = new Set();
-  for (const [allActions, , collected] of rawSolutions) {
+  for (const [allActions, n, m] of rawSolutions) {
     // Trim trailing actions that collect no new target: a path's job is done
     // at the last target it picks up; anything after only wastes resources.
     let lastHit = -1;
@@ -625,26 +598,119 @@ function buildSolutions(rawSolutions) {
     const sig = actions.map((a) => `${a.banner_index},${a.action_type},${a.position_from},${a.position_to}`).join(";");
     if (seen.has(sig)) continue;
     seen.add(sig);
-
-    const total = emptyResources();
-    const collectedUnits = [];
-    for (const a of actions) {
-      for (const k of RESOURCE_KEYS) total[k] += a.cost[k] || 0;
-      collectedUnits.push(...a.targets_hit);
-    }
-    out.push({
-      actions,
-      cost: total,
-      final_position: actions[actions.length - 1].position_to,
-      collected_count: popcount(collected),
-      collected_units: collectedUnits,
-      final_seed: actions[actions.length - 1].result_seed,
-    });
+    out.push({ sol: summarize(actions), n, m });
   }
-  // Most collected first, then cheapest by scalarised cost (a stable sort).
+  // Best first: the most collected (or the best mask), then cheapest by
+  // scalarised cost, then a wishlist's tie-break (a stable sort).
+  const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
   const key = (s) => scalar(RESOURCE_KEYS.map((k) => s.cost[k]));
-  out.sort((a, b) => b.collected_count - a.collected_count || key(a) - key(b));
-  return out;
+  out.sort((a, b) => cmp(a.n, b.n) || key(a.sol) - key(b.sol) || cmp(a.m, b.m));
+  return out.map((o) => o.sol);
+}
+
+// --------------------------------------------------------------------------- //
+// A path from its steps (how the search keeps paths, and how a plan is saved)
+// --------------------------------------------------------------------------- //
+
+// What the page shows about a path: its actions, total cost, where it ends,
+// the targets it collects (in pull order) and the seed after it.
+export function summarize(actions) {
+  const total = emptyResources();
+  const collectedUnits = [];
+  for (const a of actions) {
+    for (const k of RESOURCE_KEYS) total[k] += a.cost[k] || 0;
+    collectedUnits.push(...a.targets_hit);
+  }
+  return {
+    actions,
+    cost: total,
+    final_position: actions[actions.length - 1].position_to,
+    collected_count: collectedUnits.length,
+    collected_units: collectedUnits,
+    final_seed: actions[actions.length - 1].result_seed,
+  };
+}
+
+const is11 = (a) => a.action_type === ACTION_GUARANTEED_11 || a.action_type === ACTION_MULTI_11;
+
+// A path's steps: 2 * banner index, + 1 for an 11-draw.
+export const stepsOf = (solution) => solution.actions.map((a) => 2 * a.banner_index + (is11(a) ? 1 : 0));
+
+// `n` pulls in a row from `pos` (an 11-draw's chain): the units, where it
+// ends, and the seed after it. Null if it runs past the table.
+function pullChain(pos, last, rolls, n) {
+  const units = [];
+  let seed = null;
+  for (let i = 0; i < n; i++) {
+    const [u, np, , s] = getNextPosNormal(pos, null, rolls, last);
+    if (!u || !np) return null;
+    units.push(u);
+    pos = np;
+    last = u;
+    seed = s;
+  }
+  return { units, next: pos, seed };
+}
+
+// The actions of a path given by its steps (stepsOf), replayed from
+// `startPos`: single pulls on normal banners spend the `rareTickets` first,
+// then cat food, and `isTarget(unit)` says which units are targets (the first
+// pull of each is a hit). Null if a step can't be pulled.
+export function replaySteps(banners, steps, { rareTickets = 0, isTarget = () => false, startPos = "1A" } = {}) {
+  banners = coerceBanners(banners);
+  const got = new Set();
+  const hitsIn = (units) => {
+    const hits = [];
+    for (const u of units) {
+      if (isTarget(u) && !got.has(u)) {
+        got.add(u);
+        hits.push(u);
+      }
+    }
+    return hits;
+  };
+  const actions = [];
+  let pos = startPos;
+  let last = null;
+  let ticketsUsed = 0;
+  for (const step of steps) {
+    const bIdx = step >> 1;
+    const banner = banners[bIdx];
+    const entry = banner?.rolls[pos];
+    if (!entry) return null;
+    let act;
+    if (step & 1) {
+      if (banner.hasGuaranteed) {
+        const [gUnit, gNext, gSeed] = guaranteedFor(entry, last);
+        const d = gUnit && gNext ? pullChain(pos, last, banner.rolls, 10) : null;
+        if (!d) return null;
+        const units = [...d.units, gUnit];
+        act = action(bIdx, ACTION_GUARANTEED_11, PAY_CAT_FOOD, pos, gNext, units, hitsIn(units), COST_11, gSeed);
+      } else {
+        const d = pullChain(pos, last, banner.rolls, 11);
+        if (!d) return null;
+        act = action(bIdx, ACTION_MULTI_11, PAY_CAT_FOOD, pos, d.next, d.units, hitsIn(d.units), COST_11, d.seed);
+      }
+    } else {
+      const [unit, nextP, , seed] = getNextPosNormal(pos, entry.unit, banner.rolls, last);
+      if (!unit || !nextP) return null;
+      if (banner.type === BANNER_NORMAL) {
+        const useTicket = ticketsUsed < rareTickets;
+        if (useTicket) ticketsUsed += 1;
+        act = action(bIdx, ACTION_SINGLE, useTicket ? PAY_RARE_TICKET : PAY_CAT_FOOD, pos, nextP,
+          [unit], hitsIn([unit]), useTicket ? COST_TICKET : COST_FOOD, seed);
+      } else {
+        const platinum = banner.type === BANNER_PLATINUM;
+        act = action(bIdx, platinum ? ACTION_PLATINUM : ACTION_LEGEND,
+          platinum ? PAY_PLATINUM_TICKET : PAY_LEGEND_TICKET, pos, nextP, [unit], hitsIn([unit]),
+          platinum ? COST_PLATINUM : COST_LEGEND, seed);
+      }
+    }
+    actions.push(act);
+    pos = act.position_to;
+    last = act.units_pulled[act.units_pulled.length - 1];
+  }
+  return actions;
 }
 
 // --------------------------------------------------------------------------- //

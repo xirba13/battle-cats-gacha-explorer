@@ -1,12 +1,83 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest changes (deeper tables, the
-repo clean-up) first, then the webapp's sections in the order they happened,
-then the early
+building the Battle Cats Gacha Explorer: the latest changes (wishlists, deeper
+tables, the repo clean-up) first, then the webapp's sections in the order they
+happened, then the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Wishlists: priorities, several lists, saved and shared plans
+
+The user asked for a wishlist sorted by priority (most wanted first) that
+settles conflicts (two ubers on the same row of two banners, or one on track A
+and the other on track B), its own tab with its units picked in the Path
+Finder, and a way to save and share the wishlist and a chosen path (a link or
+a code) to pick up later, on another device, or to send to a friend. Their
+choices: each wishlist chooses whether it prefers the paths that get the
+units higher on it or just the most units; a shared plan opens read-only; a
+shared wishlist gives whoever opens it an exact copy; after following a path,
+ask whether to take the wishlist units it pulled off.
+
+- **Two rankings, per list** (`pathfinder.js`: RANK_ORDER, RANK_MOST; with no
+  wishlist it's RANK_COUNT, the search as before). The heap gets one more key,
+  m: states pop by n, then cost, then m.
+  - *Top of the list first* (RANK_ORDER): the more wanted a target, the
+    higher its bit in the mask, and n = −mask, so comparing two masks compares
+    what the paths collect in priority order. Exact when the search finishes,
+    as wishlist searches do. The paths kept all collect the same units (the
+    best set), so they're its cheapest routes; untick units to see others.
+  - *Most units* (RANK_MOST): n = −count, as without a wishlist, and m = −mask:
+    between paths with as many units the cheaper wins, and the order only
+    settles equal costs, which is the user's case of two ubers on the same row
+    (same pulls, same cost).
+  - A first version had three rankings (strict order, most units then order,
+    and weighted points); the user meant just these two, so it's simpler.
+  - It costs nothing measurable: the golden searches (count) give exactly the
+    same results, and the depth benchmarks the same times (7.7 s, 2.3 s,
+    13.4 s) and memory.
+- **Wishlist units are found by id.** A list keeps Cat Guide uids, and godfat's
+  cat id is the uid + 1 (true for all 223 cats in the 2026-10-24 data; a test
+  checks every cat whose name matches), which gives the exact name the tables
+  use. So names that don't match ("Shiro Amakusa" vs "Amakusa Shiro") don't
+  matter for wishlists. The Upcoming list now says which units each banner can
+  give (its gacha's cats of a rarity with a chance), for the Wishlist tab's
+  filter and the Path Finder's "not in the picked banners".
+- **Several lists**, each with a name, a ranking and its units in order, each
+  ticked or not for the search (the ticks are saved too). The Path Finder
+  searches the open list, or every unit you don't own; with nothing ticked,
+  every unit you don't own, as an empty wishlist did before.
+- **Saved like everything else**, in the page URL and the browser's copy: `w=`
+  holds all the lists as one code (a format byte, then varints: each unit is
+  uid × 2 + 1 if unticked), `p=` the plan. The "which one to keep" prompt
+  compares them too.
+- **A plan is a path that can be built again**: the seed, table depth, its
+  banners (event ids, in order), the rare tickets it was planned with (tickets
+  pay first, so they decide what each pull costs), its steps (banner + single or
+  11-draw, stored as runs), which of the units it pulls were its targets (bits
+  over the different units, in first-pull order) and a 32-bit hash of all it
+  pulls: 160 characters for a 13-step plan on 5 banners, 343 for a 57-step,
+  92-unit one on 11 (the event ids, kept as text, are most of it). Showing it
+  replays the steps on today's tables (`replaySteps`, which the search now uses
+  for its results too): no search, so it's instant and the same on every
+  device. A plan whose
+  data changed is flagged ("changed": the hash differs), as is one whose banner
+  left the data ("gone") or whose steps don't fit any more ("broken").
+- **Sharing.** "Share plan (read-only)" copies the whole link plus `v=1`
+  (next to "Copy link for my other devices", the plain link): it opens
+  read-only, so nothing is saved in that browser, its saved copy is untouched
+  and there's no "which one to keep" prompt, and "Add their wishlist to mine"
+  copies the wishlist into its own lists. A wishlist link is `#wish=<code>`
+  (the code is also copyable, and pasted in "Add a shared wishlist…"): it loads
+  the opener's own data and adds an exact copy (its name numbered if taken; the
+  same units, ticks and ranking under any name just open that list), and the
+  URL then becomes the normal one, so a reload doesn't add it again.
+- **The tabs stay mounted**, hidden, so going to the Wishlist and back keeps the
+  Path Finder's banners and results. The track table redraws its rows when its
+  size changes (a ResizeObserver): a hidden table has no size.
+- Copy buttons show the text to copy by hand when the browser won't let the
+  page use the clipboard (the desktop app's built-in browser doesn't).
 
 ## Deeper tables: depth follows your resources
 

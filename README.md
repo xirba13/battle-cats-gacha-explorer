@@ -9,21 +9,28 @@ path** to the units they don't yet own, using godfat seed-tracking data.
 > resources.**
 
 **Runs entirely in your browser** — no server, no accounts, no database. Your
-collection lives in the page URL (a compact code) and in your browser, and the
-roll tables and the path search are computed on your device. It has three tabs:
+collection, wishlists and plan live in the page URL (compact codes) and in your
+browser, and the roll tables and the path search are computed on your device.
+It has four tabs:
 
 1. **Cat Guide** — a wiki-style grid mirroring the in-game Cat Guide order where
    you toggle units owned/not-owned. Includes a name search box, owned/rarity
    filters, and copy-link / copy-code / load-code buttons to save your collection.
-2. **Path Finder** — enter your seed + resources; the app builds the roll tables
+2. **Wishlist** — the units you want, **most wanted first** (drag to reorder), in
+   as many lists as you like. Each list picks which paths it prefers: the **top
+   of the list first** (your #1 beats any number of others) or the **most units**
+   (whichever they are; ties go to the cheaper path, then to your order). A
+   wishlist link or code gives whoever opens it an exact copy.
+3. **Path Finder** — enter your seed + resources; the app builds the roll tables
    of the *Upcoming* banners (godfat's roll logic and his open data, updated
    daily, so bc.godfat.org being slow or down doesn't matter), computes optimal
-   paths to the units you don't own yet, or to the ones on your wishlist even if
-   you own them (each path ends at its last target), shows them on a
-   godfat-style **track table**, and offers an **"I followed this path"** button
-   that marks every newly pulled unit as owned, decrements your resources, and
-   **auto-fills your new seed**.
-3. **Instructions** — an in-app usage guide.
+   paths to the units you don't own yet, or to the wishlist units you tick even
+   if you own them (each path ends at its last target), shows them on a
+   godfat-style **track table**, lets you **save a path as your plan** (kept until
+   you follow it, and shareable as a read-only link), and offers an **"I followed
+   this path"** button that marks every newly pulled unit as owned, decrements
+   your resources, and **auto-fills your new seed**.
+4. **Instructions** — an in-app usage guide.
 
 ## Screenshots
 
@@ -48,9 +55,9 @@ roll tables and the path search are computed on your device. It has three tabs:
 ## Your data & privacy
 
 There are no accounts and no server: the page loads static files and computes
-everything on your device. Your **owned units, seed, and resources** are encoded
-into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browser
-(localStorage), so:
+everything on your device. Your **owned units, wishlists, saved plan, seed, and
+resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…&w=…&p=…`)
+and saved in your browser (localStorage), so:
 
 - Opening the site again in the same browser brings everything back, even
   without the link.
@@ -59,6 +66,11 @@ into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browse
   and **Load a code…** restores it.
 - Opening a link whose data isn't what your browser saved asks which one to keep,
   so an old bookmark or someone else's link can't replace your saved collection.
+- **Share plan (read-only)** gives a link for a friend that opens your plan
+  read-only: nothing is saved in their browser and their own data is left alone
+  (your own link, **Copy link for my other devices**, is the one that carries
+  everything to another device of yours). A **wishlist link or code** adds an
+  exact copy of that wishlist to whoever opens it.
 - **Save in this browser** (Cat Guide) turns the browser's copy off and forgets
   it, e.g. on a shared computer. Private windows don't keep it, clearing site data
   deletes it, and Safari on iPhone drops it after about 7 days without a visit
@@ -70,8 +82,11 @@ into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browse
    to find units). Copy your link/code to save it.
 2. Top bar — enter your **seed** and your **resources** (rare tickets, cat food,
    platinum tickets, legend tickets).
-3. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
+3. **Wishlist** tab (optional) — add the units you want, most wanted first, and
+   pick how its order ranks paths.
+4. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
    (special Platinum/Legend banners are pre-selected when you have the tickets),
+   choose your wishlist (and tick its units) or every unit you don't own,
    then *Find optimal paths*. The tables go as deep as your resources can pull
    (about one row per pull, so the best paths can use them all; you can type your
    own depth). The search runs in the background in your browser:
@@ -80,9 +95,11 @@ into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…`) and saved in your browse
    change a banner/wishlist. Under the paths, the **track table** shows each searched
    banner's roll table (tracks A and B, plus an 11-draw column on guaranteed
    banners) with the selected path shaded.
-4. Pick a path, pull it in-game, then click **"I followed this path."** Every
-   unit on that path is marked owned, your resources are decremented, and your
-   **new seed is filled in automatically** — verify it on godfat, then search again.
+5. Pick a path (**📌 Save as my plan** keeps it, with its table, until you're
+   done), pull it in-game, then click **"I followed this path."** Every unit on
+   that path is marked owned, your resources are decremented, your **new seed is
+   filled in automatically** — verify it on godfat — and you're asked whether to
+   take the wishlist units you got off your wishlists. Then search again.
 
 ### Pull cost model
 
@@ -124,7 +141,10 @@ pnpm test
   this path" results. If you change the search on purpose, they show exactly
   what changed. It also covers the search's time and memory caps.
 - **The rules:** `pathfinder.test.mjs` (costs, tickets first, 11-rolls, capsules,
-  paths ending at their last target, dupes, track-table cells), `godfat-data.test.mjs` (cutting
+  paths ending at their last target, dupes, track-table cells, the wishlist
+  rankings, replaying a path from its steps), `wishlist.test.mjs` (wishlist
+  searches, saved plans built again, the wishlist and plan codes, sharing a
+  wishlist), `godfat-data.test.mjs` (cutting
   godfat's YAML down, series end dates, the Upcoming list, banners, seeds),
   `catalog.test.mjs` (the Cat Guide list's uid guards, name matching, targets and
   the wishlist, "I followed this path"), `owncode.test.mjs` (the URL code, and a
@@ -169,10 +189,11 @@ src/
   engine/           # rolls.js (roll tables: godfat's logic, Apache-2.0), data.js (banner data,
                     # Upcoming list), pathfinder.js (path search), names.js, services.js,
                     # search.worker.js (runs a search in the background)
-  api.js            # the page's requests (banners, search, "I followed this path"), answered here
+  api.js            # the page's requests (banners, search, plans, "I followed this path"), answered here
   owncode.js        # owned/seed/resources <-> URL code (the "save file")
+  wishlists.js      # the wishlists and their codes; plancode.js: a saved plan's code; bytes.js: helpers
   browserSave.js    # the same state saved in this browser (localStorage)
-  components/       # Cat Guide, Path Finder, track table, instructions
+  components/       # Cat Guide, Wishlist, Path Finder, track table, instructions
 public/
   data/             # godfat_bcen.json (banner data, updated daily), cat_guide_master.json
   icons/            # ~723 unit icons

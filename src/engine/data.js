@@ -4,7 +4,12 @@
 // job (scripts/update-godfat-data.mjs extracts it from godfat's bc-en.yaml).
 
 import * as pathfinder from "./pathfinder.js";
-import { MASK, Pool, buildRolls } from "./rolls.js";
+import { LEGEND, MASK, Pool, RARE, SUPA, UBER, buildRolls } from "./rolls.js";
+
+// godfat numbers cats one higher than the game (and the Cat Guide list's uid):
+// his cat 619 is the game's unit 618.
+export const uidOfCat = (catId) => catId - 1;
+export const catOfUid = (uid) => uid + 1;
 
 // Platinum / Legend Capsules use their own tickets (from godfat's flags:
 // uber 100% = platinum; uber + legend 100% for a year or more = legend).
@@ -31,6 +36,15 @@ export class Dataset {
 
   nameOf(cid) {
     return this.cats.has(cid) ? this.cats.get(cid)[0] : "N/A";
+  }
+
+  // The cat id of a name in the tables (the first, if two cats share it).
+  catIdOf(name) {
+    if (!this.idByName) {
+      this.idByName = new Map();
+      for (const [id, [n]] of this.cats) if (!this.idByName.has(n)) this.idByName.set(n, id);
+    }
+    return this.idByName.get(name) ?? null;
   }
 
   // godfat's "Upcoming" list: running now, then starting later.
@@ -65,7 +79,20 @@ export class Dataset {
     // 11-draws), so step-up banners get no guaranteed column for now.
     const gRolls = ev.guaranteed ? 11 : 0;
     const table = buildRolls(Number(seed) >>> 0, pool, count, gRolls, (cid) => this.nameOf(cid));
-    return new pathfinder.Banner(ev.name, table, bannerType(ev));
+    return new pathfinder.Banner(ev.name, table, bannerType(ev), eventId);
+  }
+
+  // The cats (godfat ids) the event can give: its gacha's cats of a rarity
+  // with a chance, plus the ubers when its 11-draw guarantees one.
+  catsOf(eventId) {
+    const ev = Object.hasOwn(this.events, eventId) ? this.events[eventId] : undefined;
+    if (ev === undefined) return [];
+    const pool = new Pool(this.rarity, this.gacha.get(ev.id) || [], ev.rare, ev.supa, ev.uber);
+    const chance = {
+      [RARE]: ev.rare > 0, [SUPA]: ev.supa > 0, [UBER]: ev.uber > 0 || Boolean(ev.guaranteed),
+      [LEGEND]: ev.rare + ev.supa + ev.uber < 10000,
+    };
+    return [RARE, SUPA, UBER, LEGEND].flatMap((r) => (chance[r] ? pool.slots[r] : []));
   }
 }
 

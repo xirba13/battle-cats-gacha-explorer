@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import CopyButton from "./CopyButton.jsx";
 import UnitIcon from "./UnitIcon.jsx";
 
 const RARITY_CLASS = {
@@ -16,7 +17,6 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
   const [query, setQuery] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteVal, setPasteVal] = useState("");
-  const [copied, setCopied] = useState(null);
 
   const pages = useMemo(() => {
     if (!master) return [];
@@ -48,22 +48,12 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
   };
   const matchCount = q ? master.units.filter(visible).length : null;
 
-  const copy = async (text, what) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(what);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      setError("Couldn't copy to clipboard — copy it manually.");
-    }
-  };
-
   const toggleSaving = (e) => {
     if (e.target.checked) {
       saving.setEnabled(true);
     } else if (window.confirm(
-      "Stop saving in this browser? This forgets the collection, seed and resources saved here. " +
-        "Your link and code still have them."
+      "Stop saving in this browser? This forgets the collection, wishlists, plan, seed and resources " +
+        "saved here. Your link still has them."
     )) {
       saving.setEnabled(false);
     }
@@ -82,12 +72,17 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
     <div className="cat-guide">
       <div className="save-panel">
         <div>
-          {saving?.enabled ? (
+          {saving?.view ? (
             <>
-              <b>Your collection, seed and resources are saved in this browser and in the page URL.</b>{" "}
+              <b>You're looking at someone's shared plan: nothing is saved in this browser.</b>{" "}
+              <span className="muted small">Your own collection and wishlists stay as they are.</span>
+            </>
+          ) : saving?.enabled ? (
+            <>
+              <b>Your collection, wishlists, plan, seed and resources are saved in this browser and in the page URL.</b>{" "}
               <span className="muted small">
-                Opening the site again brings them back. To move them to another device, use the link or
-                your code — nothing is stored on any server.
+                Opening the site again brings them back. To move them to another device, use the link (or
+                your code, for the collection) — nothing is stored on any server.
               </span>
             </>
           ) : (
@@ -100,14 +95,10 @@ export default function CatGuide({ master, owned, ownedCode, toggleOwned, onLoad
           )}
         </div>
         <div className="save-actions">
-          <button onClick={() => copy(window.location.href, "link")}>
-            {copied === "link" ? "✓ Copied!" : "Copy link"}
-          </button>
-          <button onClick={() => copy(code, "code")} disabled={!code}>
-            {copied === "code" ? "✓ Copied!" : "Copy code"}
-          </button>
+          <CopyButton text={() => window.location.href} label="Copy link" />
+          <CopyButton text={() => code} label="Copy code" disabled={!code} />
           <button onClick={() => setPasteOpen((v) => !v)}>Load a code…</button>
-          {saving?.available ? (
+          {saving?.view ? null : saving?.available ? (
             <label className="save-toggle small" title="Untick on a shared computer">
               <input type="checkbox" checked={saving.enabled} onChange={toggleSaving} />
               Save in this browser

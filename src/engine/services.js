@@ -3,7 +3,7 @@
 // passes in the player's state (owned units, seed, resources) and gets the new
 // state.
 
-import { ingest } from "./data.js";
+import { catOfUid, ingest, uidOfCat } from "./data.js";
 import { NameMatcher, normalize } from "./names.js";
 import * as pathfinder from "./pathfinder.js";
 
@@ -53,13 +53,14 @@ const UNIT_KEYS = ["unit", "alt_unit", "guaranteed_unit", "alt_guaranteed_unit"]
 // a wishlist (godfat or master names), exactly the wishlist's units in the
 // banners, owned or not (the wishlist wins: you may want another copy).
 // Matching goes godfat name -> master -> global_index to decide ownership;
-// the godfat name stays the search target (the tables use it).
-export function computeTargets(banners, master, owned, wishlist = null) {
+// the godfat name stays the search target (the tables use it). `ordered`:
+// the targets come in the wishlist's order (most wanted first).
+export function computeTargets(banners, master, owned, wishlist = null, { ordered = false } = {}) {
   const seen = new Set();
   const targets = [];
   const ownedNames = [];
   const unmatched = [];
-  const wish = wishlist && wishlist.length ? new Set(wishlist.map(normalize)) : null;
+  const wish = wishlist ? new Set(wishlist.map(normalize)) : null;
   for (const banner of banners) {
     for (const entry of Object.values(banner.rolls)) {
       for (const key of UNIT_KEYS) {
@@ -82,6 +83,11 @@ export function computeTargets(banners, master, owned, wishlist = null) {
         targets.push(name);
       }
     }
+  }
+  if (ordered && wishlist) {
+    const rank = new Map();
+    wishlist.forEach((n, i) => rank.has(normalize(n)) || rank.set(normalize(n), i));
+    targets.sort((a, b) => rank.get(normalize(a)) - rank.get(normalize(b)));
   }
   return { targets, owned_in_banners: ownedNames, unmatched };
 }
@@ -139,9 +145,31 @@ function annotateUnits(names, master) {
   });
 }
 
-// Run the path search on built banners; the result the page shows.
+// The roll tables, their units and the paths, as the page shows them; every
+// path is checked again before it's shown (experimental-tool safety net).
+function describe(banners, master, solutions) {
+  return {
+    banners: banners.map((b, i) => ({ index: i, name: b.name, type: b.type, positions: Object.keys(b.rolls).length, rolls: tableRolls(b) })),
+    units: unitInfo(banners, master),
+    solutions: solutions.map((sol) => {
+      const [ok, errors] = pathfinder.verifySolution(banners, sol);
+      return {
+        ...sol,
+        verified: ok,
+        verify_errors: errors,
+        units_pulled_all: annotateUnits(sol.actions.flatMap((a) => a.units_pulled), master),
+        // The roll-table cells each action pulls, for the track table view.
+        cells: pathfinder.solutionCells(banners, sol),
+      };
+    }),
+  };
+}
+
+// Run the path search on built banners; the result the page shows. With a
+// wishlist, `ranking` can rank paths by its order (see pathfinder.RANKINGS).
 export function runSearch(banners, master, owned, resources, {
   wishlist = null,
+  ranking = pathfinder.RANK_COUNT,
   mode = pathfinder.MODE_RESOURCE_LIMIT,
   maxSteps = MAX_STEPS,
   maxSolutions = 20,
@@ -150,31 +178,18 @@ export function runSearch(banners, master, owned, resources, {
   onProgress = null,
 } = {}) {
   const res = pathfinder.normalizeResources(resources);
-  const report = computeTargets(banners, master, owned, wishlist);
+  if (wishlist === null) ranking = pathfinder.RANK_COUNT;
+  const report = computeTargets(banners, master, owned, wishlist, { ordered: ranking !== pathfinder.RANK_COUNT });
   const stats = {};
   const solutions = pathfinder.findPaths(banners, report.targets, {
-    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, maxSteps, maxSolutions,
+    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, ranking, maxSteps, maxSolutions,
     timeLimitMs, maxStates, onProgress, stats,
-  });
-  // Re-validate every solution before showing it (experimental-tool safety net).
-  const validated = solutions.map((sol) => {
-    const [ok, errors] = pathfinder.verifySolution(banners, sol);
-    return {
-      ...sol,
-      verified: ok,
-      verify_errors: errors,
-      units_pulled_all: annotateUnits(sol.actions.flatMap((a) => a.units_pulled), master),
-      // The roll-table cells each action pulls, for the track table view.
-      cells: pathfinder.solutionCells(banners, sol),
-    };
   });
   return {
     targets: report.targets,
     owned_in_banners: report.owned_in_banners,
     unmatched: [...new Set(report.unmatched)].sort(),
-    banners: banners.map((b, i) => ({ index: i, name: b.name, type: b.type, positions: Object.keys(b.rolls).length, rolls: tableRolls(b) })),
-    units: unitInfo(banners, master),
-    solutions: validated,
+    ...describe(banners, master, solutions),
     // How the search went: steps taken, states kept, and "steps" / "time" /
     // "states" if a cap stopped it (then cheaper paths may exist).
     search: stats,
@@ -224,12 +239,33 @@ export function dataInfo(dataset) {
   return { source: "local", built_on: dataset.meta.built_on ?? null };
 }
 
-// The Upcoming banners (the seed doesn't change them).
+// The Upcoming banners (the seed doesn't change them), each with the units it
+// can give (Cat Guide uids).
 export function eventsRequest(dataset, seed, { today } = {}) {
-  return { seed, events: dataset.upcoming(today), data: dataInfo(dataset) };
+  const events = dataset.upcoming(today).map((e) => ({ ...e, uids: dataset.catsOf(e.event_id).map(uidOfCat) }));
+  return { seed, events, data: dataInfo(dataset) };
 }
 
-// A search: build the selected banners for the seed, then find paths.
+// A wishlist from the Wishlist tab, for a search: its ticked units' names in
+// the tables (godfat's cat id for a unit gives the exact name they use), most
+// wanted first, and their places in the list (#1…) by name, for the page.
+function wishFor(dataset, wish) {
+  const names = [];
+  const ranks = {};
+  (wish.units || []).forEach((w, i) => {
+    const cat = catOfUid(w.uid);
+    if (w.on === false || !dataset.cats.has(cat)) return;
+    const name = dataset.nameOf(cat);
+    names.push(name);
+    ranks[name] = i + 1;
+  });
+  return { names, ranks };
+}
+
+// A search: build the selected banners for the seed, then find paths. The
+// targets: `body.wish` ({units: [{uid, on}], most wanted first, ranking}, from
+// the Wishlist tab: its ticked units), or `body.wishlist` (names, ranked by
+// count), or else every unit you don't own.
 // Throws on a seed that isn't a number from 0 to 2^32 - 1.
 export function searchRequest(dataset, master, body, {
   today, timeLimitMs = null, maxStates = null, onProgress = null, maxSteps = MAX_STEPS,
@@ -237,8 +273,16 @@ export function searchRequest(dataset, master, body, {
   const resources = pathfinder.normalizeResources(body.resources);
   const count = Math.max(1, Math.min(body.count ?? DEFAULT_COUNT, MAX_COUNT));
   const ingestion = ingest(dataset, body.seed, count, { resources, eventIds: body.event_ids, today });
+  let wishlist = body.wishlist ?? null;
+  let ranking = pathfinder.RANK_COUNT;
+  let ranks = null;
+  if (body.wish?.units?.some((w) => w.on !== false)) {
+    ({ names: wishlist, ranks } = wishFor(dataset, body.wish));
+    ranking = body.wish.ranking ?? pathfinder.RANK_ORDER;
+  }
   const result = runSearch(ingestion.banners, master, new Set(body.owned || []), resources, {
-    wishlist: body.wishlist ?? null,
+    wishlist,
+    ranking,
     mode: body.mode ?? pathfinder.MODE_RESOURCE_LIMIT,
     maxSolutions: body.max_solutions ?? 20,
     maxSteps,
@@ -247,14 +291,101 @@ export function searchRequest(dataset, master, body, {
     onProgress,
   });
   return {
-    ...result, seed: body.seed, wishlist: body.wishlist ?? null, skipped: ingestion.skipped,
+    ...result, seed: body.seed, wishlist, ranking: wishlist ? ranking : pathfinder.RANK_COUNT, wish_ranks: ranks,
+    skipped: ingestion.skipped,
+    // What a saved plan needs to build these tables again.
+    depth: count, event_ids: ingestion.banners.map((b) => b.eventId), resources,
     data: dataInfo(dataset), disclaimer: DISCLAIMER,
   };
 }
 
 export function followedRequest(master, { solution, owned = [], resources = null }) {
+  // Every unit the path pulls (Cat Guide uids), so the page can offer to take
+  // them off your wishlists.
+  const pulled = new Set();
+  for (const act of solution.actions || []) {
+    for (const name of act.units_pulled || []) {
+      const unit = master.matcher.match(name);
+      if (unit) pulled.add(unit.uid);
+    }
+  }
   return {
     ...followedResult(master, solution, owned, resources),
+    pulled_uids: [...pulled],
     prompt: "Path recorded. Your new seed has been filled in automatically — verify it on bc.godfat.org, then search again.",
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Saved plans
+// --------------------------------------------------------------------------- //
+
+// FNV-1a (32 bits) of the units a path pulls, in order: a saved plan keeps it
+// to notice when the banner data changed under it.
+export function unitsHash(units) {
+  let h = 0x811c9dc5;
+  for (const u of units) {
+    for (const ch of `${u}\u0001`) {
+      h ^= ch.codePointAt(0);
+      h = Math.imul(h, 0x01000193);
+    }
+  }
+  return h >>> 0;
+}
+
+// A search result's path, saved as a plan: what builds it again (the seed,
+// table depth, its banners in order, the rare tickets it was planned with and
+// its steps), which of the units it pulls are its targets (bits over the
+// different units, in the order they're first pulled) and a hash of all it
+// pulls.
+export function planOf(result, solution) {
+  const pulled = solution.actions.flatMap((a) => a.units_pulled);
+  const distinct = [...new Set(pulled)];
+  const hit = new Set(solution.collected_units);
+  const hits = new Uint8Array(Math.ceil(distinct.length / 8));
+  distinct.forEach((u, i) => {
+    if (hit.has(u)) hits[i >> 3] |= 1 << (i & 7);
+  });
+  return {
+    seed: String(result.seed),
+    depth: result.depth,
+    rareTickets: result.resources.rare_tickets,
+    events: result.event_ids,
+    steps: pathfinder.stepsOf(solution),
+    hits,
+    check: unitsHash(pulled),
+  };
+}
+
+// A saved plan, built again from today's data: its banners' roll tables and
+// its path, replayed from its steps, shaped like a search result. `problem`:
+// "gone" (a banner left the data: it's over), "broken" (the steps don't fit
+// the tables any more) or "changed" (the banner data changed, so the path may
+// not pull what it did, and its targets aren't known).
+export function planRequest(dataset, master, plan) {
+  const base = {
+    plan: true, seed: plan.seed, depth: plan.depth, event_ids: plan.events,
+    data: dataInfo(dataset), disclaimer: DISCLAIMER,
+  };
+  const depth = Math.max(1, Math.min(plan.depth, MAX_COUNT));
+  const banners = plan.events.map((id) => dataset.banner(plan.seed, id, depth));
+  if (banners.some((b) => b === null)) return { ...base, problem: "gone" };
+  const replay = (isTarget) => pathfinder.replaySteps(banners, plan.steps, { rareTickets: plan.rareTickets, isTarget });
+  const first = replay(undefined);
+  if (!first) return { ...base, problem: "broken" };
+  const pulled = first.flatMap((a) => a.units_pulled);
+  const changed = unitsHash(pulled) !== plan.check;
+  const targets = changed ? [] : [...new Set(pulled)].filter((_, i) => plan.hits[i >> 3] & (1 << (i & 7)));
+  const actions = replay((u) => targets.includes(u));
+  return {
+    ...base,
+    problem: changed ? "changed" : null,
+    targets,
+    // Each target's Cat Guide uid, to find it on a wishlist.
+    target_uids: Object.fromEntries(targets.map((name) => {
+      const id = dataset.catIdOf(name);
+      return [name, id === null ? null : uidOfCat(id)];
+    })),
+    ...describe(banners, master, [pathfinder.summarize(actions)]),
   };
 }

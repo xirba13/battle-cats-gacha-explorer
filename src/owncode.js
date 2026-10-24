@@ -1,7 +1,8 @@
 // Encode/decode the player's owned-units set into a compact, URL-safe code, and
-// (de)serialize the rest of the client state (seed + resources) to the URL hash.
-// Nothing is stored on a server: the URL is the save file (and browserSave.js
-// keeps a copy in this browser).
+// (de)serialize the rest of the client state (seed, resources, and the codes
+// of the wishlists and the saved plan: wishlists.js, plancode.js) to the URL
+// hash. Nothing is stored on a server: the URL is the save file (and
+// browserSave.js keeps a copy in this browser).
 //
 // The owned set is a bitmask, but keyed on each unit's STABLE in-game id (`uid`),
 // NOT its Cat Guide display position (`global_index`). global_index renumbers
@@ -23,24 +24,11 @@
 // current master (e.g. a retired unit) are skipped on decode. The format byte
 // leaves room for future schemes without breaking old links.
 
+import { base64urlToBytes, bytesToBase64url } from "./bytes.js";
+
 const FMT_RAW = 0x01;
 const FMT_DEFLATE = 0x02;
 const FMT_LIST = 0x03;
-
-function bytesToBase64url(bytes) {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function base64urlToBytes(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  const bin = atob(s);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
 
 // Bitmask over uids: bit `uid` set iff owned. Trailing zero bytes are implicit
 // (the array spans only up to the highest owned uid).
@@ -184,8 +172,10 @@ export function decodeResources(s) {
   return out;
 }
 
-// Synchronous read of the hash: owned stays a code string (decode it with
-// decodeOwned), seed + resources are parsed directly.
+// Synchronous read of the hash: owned, the wishlists and the plan stay code
+// strings (decode them once the Cat Guide list is loaded), seed + resources
+// are parsed directly. `view`: a shared plan, opened read-only (v=1);
+// `sharedWish`: a shared wishlist's code, to add to yours (wish=).
 export function readRawState() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return {
@@ -193,14 +183,21 @@ export function readRawState() {
     seed: p.get("s") || "",
     resources: decodeResources(p.get("r")),
     tab: p.get("t") || "",
+    wishCode: p.get("w") || "",
+    planCode: p.get("p") || "",
+    view: p.get("v") === "1",
+    sharedWish: p.get("wish") || "",
   };
 }
 
-export function buildHash({ ownedCode, seed, resources, tab }) {
+export function buildHash({ ownedCode, seed, resources, tab, wishCode, planCode, view }) {
   const p = new URLSearchParams();
+  if (view) p.set("v", "1");
   if (ownedCode) p.set("o", ownedCode);
   if (seed) p.set("s", seed);
   p.set("r", encodeResources(resources));
+  if (wishCode) p.set("w", wishCode);
+  if (planCode) p.set("p", planCode);
   if (tab) p.set("t", tab);
   return "#" + p.toString();
 }

@@ -51,7 +51,8 @@ export function setSavingOff(off) {
   }
 }
 
-// What this browser saved: {ownedCode, seed, resources, tab, savedAt}, or null.
+// What this browser saved: {ownedCode, seed, resources, tab, wishCode,
+// planCode, savedAt}, or null.
 export function loadSaved() {
   try {
     const d = JSON.parse(storage()?.getItem(KEY) || "null");
@@ -61,6 +62,8 @@ export function loadSaved() {
       seed: String(d.s || ""),
       resources: decodeResources(d.r),
       tab: String(d.t || ""),
+      wishCode: String(d.w || ""),
+      planCode: String(d.p || ""),
       savedAt: d.at || null,
     };
   } catch {
@@ -68,25 +71,30 @@ export function loadSaved() {
   }
 }
 
-export function save({ ownedCode, seed, resources, tab }) {
+export function save({ ownedCode, seed, resources, tab, wishCode, planCode }) {
   try {
     storage()?.setItem(KEY, JSON.stringify({
-      o: ownedCode || "", s: seed || "", r: encodeResources(resources), t: tab || "", at: new Date().toISOString(),
+      o: ownedCode || "", s: seed || "", r: encodeResources(resources), t: tab || "", w: wishCode || "",
+      p: planCode || "", at: new Date().toISOString(),
     }));
   } catch {
     /* full or blocked: the URL still has it */
   }
 }
 
-// Does this state hold anything (owned units, a seed, any resources)?
-export const hasData = (s) => Boolean(s.ownedCode || s.seed || Object.values(s.resources).some((v) => v > 0));
+// Does this state hold anything (owned units, a seed, any resources,
+// wishlists, a plan)?
+export const hasData = (s) =>
+  Boolean(s.ownedCode || s.seed || s.wishCode || s.planCode || Object.values(s.resources).some((v) => v > 0));
 
 // Compare the URL's state with the saved one. Owned codes are compared by
-// the units they hold (an old link may use another encoding of the same set).
+// the units they hold (an old link may use another encoding of the same set);
+// the wishlists and the plan by their codes.
 export async function compareStates(a, b, uidToId) {
   const [ownedA, ownedB] = await Promise.all([decodeOwned(a.ownedCode, uidToId), decodeOwned(b.ownedCode, uidToId)]);
   const same = a.seed === b.seed
     && encodeResources(a.resources) === encodeResources(b.resources)
+    && (a.wishCode || "") === (b.wishCode || "") && (a.planCode || "") === (b.planCode || "")
     && ownedA.size === ownedB.size && [...ownedA].every((i) => ownedB.has(i));
   return { same, ownedA, ownedB };
 }
