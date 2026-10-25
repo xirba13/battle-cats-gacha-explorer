@@ -104,6 +104,12 @@ export default function Instructions({ disclaimer }) {
           units with their place: #1…) and its resource cost. The selected path (the best one at
           first) also lists its exact pulls, ending at the last target; <b>click another path's
           title</b> to see its pulls instead.</li>
+        <li><b>💬 Explain the path</b> (a button on the selected path and on your plan) adds a short
+          reason under each step: 🎯 the targets it gets, ✨ the Legend Rares it pulls, 🔀 where its
+          track switches lead, ↪ the switch it sets up for the next step, or ⬇ where it moves you and
+          toward which target (one line for a run of such steps). They say what each step does, all of
+          it on the track table, so you can check it; the search picks the whole path at once, so they
+          don't say why it chose that step over another. The button is remembered in this browser.</li>
         <li><b>Track switches</b>: when a pull gives the same Rare as the cat pulled just before it (on
           any banner, or your last cat before the seed), the game rerolls it and you jump, usually to
           the other track. Every path accounts for them, and shows them with 🔀: in its title (where

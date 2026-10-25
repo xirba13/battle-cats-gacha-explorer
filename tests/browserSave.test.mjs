@@ -21,6 +21,12 @@ class FakeStorage {
   removeItem(k) {
     this.items.delete(k);
   }
+  get length() {
+    return this.items.size;
+  }
+  key(i) {
+    return [...this.items.keys()][i] ?? null;
+  }
 }
 const setStorage = (value) =>
   Object.defineProperty(globalThis, "localStorage", { value, configurable: true, writable: true });
@@ -106,4 +112,15 @@ test("without usable storage nothing breaks", async () => {
   fresh.save({ ownedCode: "", seed: "1", resources: res(0, 0, 0, 0), tab: "" });
   fresh.setSavingOff(true);
   setStorage(fake);
+});
+
+test("page preferences are kept while saving is on, and forgotten with it", () => {
+  bs.setSavingOff(false);
+  bs.savePref("explain", "1");
+  assert.equal(bs.loadPref("explain"), "1");
+  bs.setSavingOff(true);
+  assert.equal(bs.loadPref("explain"), null);
+  bs.savePref("explain", "1");
+  assert.equal(bs.loadPref("explain"), null);
+  bs.setSavingOff(false);
 });

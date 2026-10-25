@@ -42,12 +42,35 @@ export function setSavingOff(off) {
     if (!s) return;
     if (off) {
       s.removeItem(KEY);
+      for (let i = s.length - 1; i >= 0; i--) {
+        const k = s.key(i);
+        if (k?.startsWith(PREF)) s.removeItem(k);
+      }
       s.setItem(OFF_KEY, "1");
     } else {
       s.removeItem(OFF_KEY);
     }
   } catch {
     /* nothing to do */
+  }
+}
+
+// Small choices about how the page shows things (not your data), like
+// whether paths are explained: kept in this browser while saving is on.
+const PREF = "bcge.pref.";
+export function loadPref(name) {
+  try {
+    return storage()?.getItem(PREF + name) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePref(name, value) {
+  try {
+    if (!savingOff()) storage()?.setItem(PREF + name, value);
+  } catch {
+    /* blocked or full: it just isn't remembered */
   }
 }
 

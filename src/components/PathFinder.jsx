@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SEARCH_TIME_LIMIT_MS, api } from "../api.js";
+import { loadPref, savePref } from "../browserSave.js";
 import { localToday } from "../engine/data.js";
+import { explainPath } from "../explain.js";
 import { stepsOf } from "../engine/pathfinder.js";
 import { MAX_COUNT, autoDepth, planOf } from "../engine/services.js";
 import * as wl from "../wishlists.js";
@@ -62,6 +64,13 @@ export default function PathFinder({
   // The saved plan, built again for showing (null while it's built).
   const [planView, setPlanView] = useState(null);
   const [planOpen, setPlanOpen] = useState(true);
+  // "Explain the path": a reason under each step. Remembered in this browser
+  // (not from a shared plan, which saves nothing).
+  const [explain, setExplain] = useState(() => loadPref("explain") === "1");
+  const toggleExplain = () => {
+    if (!view) savePref("explain", explain ? "0" : "1");
+    setExplain(!explain);
+  };
   const resultsRef = useRef(null);
   // The running search, stopped if the page goes away.
   const searchAbort = useRef(null);
@@ -275,6 +284,8 @@ export default function PathFinder({
           lastName={plan.last === null || plan.last === undefined ? null : byUid.get(plan.last)?.name ?? `#${plan.last}`}
           onFollow={followPath}
           onRemove={() => window.confirm("Remove your saved plan?") && setPlan(null)}
+          explain={explain}
+          onExplain={toggleExplain}
         />
       )}
 
@@ -381,6 +392,7 @@ export default function PathFinder({
       <div ref={resultsRef}>
         {result && (
           <Results result={result} onFollow={followPath} onSave={savePlan} view={view}
+            explain={explain} onExplain={toggleExplain}
             savedSig={planSig} byUid={byUid} />
         )}
       </div>
@@ -461,7 +473,9 @@ const jumpText = (from, next) => {
 // A path's pulls, step by step: its Legend Rares tagged (`units`: the
 // result's rarity of each unit), and each dupe, with the track switch it
 // causes, under the step it happens in.
-function PathSteps({ sol, bannerName, units }) {
+// `reasons`: explainPath's, one list per step (null: an earlier step's line
+// covers it), or null when the path isn't explained.
+function PathSteps({ sol, bannerName, units, reasons = null }) {
   const legends = (a) => a.units_pulled.filter((u) => units?.[u]?.rarity === "Legend Rare");
   const dupesIn = (j) => (sol.dupes || []).filter((d) => d.action === j);
   const last = sol.actions.at(-1)?.units_pulled.at(-1);
@@ -493,6 +507,7 @@ function PathSteps({ sol, bannerName, units }) {
                 {a.action_type === "guaranteed_11" && d.pull === 1 && " The guaranteed uber comes from there."}
               </div>
             ))}
+            {reasons?.[j] && <div className="why"><b>Why:</b> {reasons[j].join(" · ")}</div>}
           </li>
         ))}
       </ol>
@@ -511,6 +526,15 @@ function PathSteps({ sol, bannerName, units }) {
   );
 }
 
+function ExplainButton({ explain, onExplain }) {
+  return (
+    <button className="small" onClick={onExplain} aria-pressed={explain}
+      title="A short reason under each step: what it gets, where its track switches lead, where it moves you">
+      {explain ? "Hide the reasons" : "💬 Explain the path"}
+    </button>
+  );
+}
+
 const nameOfBanner = (result) => (idx) => {
   const b = result.banners?.find((x) => x.index === idx);
   return b ? b.name : `banner ${idx + 1}`;
@@ -524,8 +548,12 @@ const PLAN_PROBLEM = {
 
 // Your saved plan: kept in the page URL and this browser until you follow or
 // remove it, built again from its seed, banners and pulls (no search).
-function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, lastName, onFollow, onRemove }) {
+function PlanCard({
+  plan, planView, ranks, seed, open, setOpen, view, planLink, lastName, onFollow, onRemove, explain, onExplain,
+}) {
   const sol = planView?.solutions?.[0] ?? null;
+  const reasons = useMemo(() => (explain && sol ? explainPath(sol, { ranks, units: planView.units }) : null),
+    [explain, sol, ranks, planView]);
   return (
     <div className="solution selected plan-card">
       <button className="sol-head sol-pick plan-toggle" onClick={() => setOpen(!open)}
@@ -557,7 +585,8 @@ function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, 
       )}
       {open && sol && (
         <>
-          <PathSteps sol={sol} bannerName={nameOfBanner(planView)} units={planView.units} />
+          <div className="save-actions"><ExplainButton explain={explain} onExplain={onExplain} /></div>
+          <PathSteps sol={sol} bannerName={nameOfBanner(planView)} units={planView.units} reasons={reasons} />
           <TrackTable result={planView} path={sol} ranks={ranks} />
         </>
       )}
@@ -565,7 +594,7 @@ function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, 
   );
 }
 
-function Results({ result, onFollow, onSave, view, savedSig, byUid }) {
+function Results({ result, onFollow, onSave, view, savedSig, byUid, explain, onExplain }) {
   // The selected path shows its steps and is drawn on the track table; the
   // others show only their title. A new search starts at the best one.
   const [picked, setPicked] = useState({ result: null, index: 0 });
@@ -585,6 +614,13 @@ function Results({ result, onFollow, onSave, view, savedSig, byUid }) {
     if (el && a.top != null) window.scrollBy(0, el.getBoundingClientRect().top - a.top);
   }, [pathIndex]);
   const ranks = result.wish_ranks;
+  const selected = result.solutions[pathIndex] ?? null;
+  const reasons = useMemo(
+    () => (explain && selected
+      ? explainPath(selected, { ranks, units: result.units, keepLegends: result.keep_legends })
+      : null),
+    [explain, selected, ranks, result]
+  );
   const table = result.banners?.some((b) => b.rolls) && (
     <TrackTable result={result} path={result.solutions[pathIndex] ?? null} ranks={ranks} />
   );
@@ -663,8 +699,9 @@ function Results({ result, onFollow, onSave, view, savedSig, byUid }) {
                   I followed this path
                 </button>
               )}
+              <ExplainButton explain={explain} onExplain={onExplain} />
             </div>
-            <PathSteps sol={sol} bannerName={nameOfBanner(result)} units={result.units} />
+            <PathSteps sol={sol} bannerName={nameOfBanner(result)} units={result.units} reasons={reasons} />
           </div>
         );
       })}

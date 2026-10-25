@@ -1,13 +1,37 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest changes (dupes after any
-cat, never skipping a Legend Rare, wishlists, deeper tables, the repo
-clean-up) first, then the webapp's sections in the order they happened, then
-the early
+building the Battle Cats Gacha Explorer: the latest changes (explaining a
+path, dupes after any cat, never skipping a Legend Rare, wishlists, deeper
+tables, the repo clean-up) first, then the webapp's sections in the order they
+happened, then the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Explaining a path
+
+The user asked for a short reason under each step ("switch to track B to get
+Uber X", "roll here to avoid skipping Legend Rare Y"), to trust and
+double-check a plan; behind a button (their choice), remembered.
+
+- **Worked out in the page** (`src/explain.js`) from what the result already
+  has (each step's pulls, targets, cells, dupes, the units' rarities), so it
+  costs the search nothing and saved plans get it too.
+- **The reasons:** 🎯 the targets a step gets (a guaranteed 11-draw's uber
+  named as such); ✨ the Legend Rares it pulls (with "Never skip a Legend
+  Rare" on: "so it isn't skipped"); 🔀 where each of its track switches leads
+  (the next target, or the next switch); ↪ a switch it sets up (the next
+  step's first pull dupes the cat it ends on); otherwise ⬇ where it moves you,
+  toward which target, one line for a run of such steps.
+- **What they don't claim:** intent. The search picks the whole path at once,
+  so the honest reason for any step is "part of the cheapest path to these
+  targets"; the lines say what a step does and leads to, all of which can be
+  checked on the track table. For a step that only moves you on, they don't
+  say "any banner would do": the cat it gives can change a later dupe.
+- The button's state is a page preference in this browser (`bcge.pref.*`),
+  kept only while "Save in this browser" is on (turning that off forgets it),
+  and never saved from a shared plan, which saves nothing.
 
 ## Dupes after any cat, and the track switches shown
 

@@ -27,7 +27,8 @@ It has four tabs:
    paths to the units you don't own yet, or to the wishlist units you tick even
    if you own them (each path ends at its last target), shows them on a
    godfat-style **track table**, marks every **track switch** a path goes through
-   (a dupe: the same Rare as the cat before, on any banner, rerolled), lets you
+   (a dupe: the same Rare as the cat before, on any banner, rerolled), can
+   **explain a path** (a short reason under each step), lets you
    **save a path as your plan** (kept until
    you follow it, and shareable as a read-only link), and offers an **"I followed
    this path"** button that marks every newly pulled unit as owned, decrements
@@ -149,7 +150,8 @@ pnpm test
   and memory caps.
 - **The rules:** `pathfinder.test.mjs` (costs, tickets first, 11-rolls, capsules,
   paths ending at their last target, dupes, track-table cells, the wishlist
-  rankings, replaying a path from its steps), `dupes.test.mjs` (a Rare after
+  rankings, replaying a path from its steps), `explain.test.mjs` (each step's
+  reason), `dupes.test.mjs` (a Rare after
   the same cat from another banner, or the last cat before the path, is
   rerolled; 11-draw ubers after one; a path's track switches),
   `wishlist.test.mjs` (wishlist searches, never skipping a Legend Rare, saved
