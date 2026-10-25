@@ -148,22 +148,35 @@ function annotateUnits(names, master) {
 
 // The roll tables, their units and the paths, as the page shows them; every
 // path is checked again before it's shown (experimental-tool safety net).
-function describe(banners, master, solutions) {
+// `last`: the cat pulled before the paths.
+function describe(banners, master, solutions, { last = null } = {}) {
   return {
     banners: banners.map((b, i) => ({ index: i, name: b.name, type: b.type, positions: Object.keys(b.rolls).length, rolls: tableRolls(b) })),
     units: unitInfo(banners, master),
     solutions: solutions.map((sol) => {
-      const [ok, errors] = pathfinder.verifySolution(banners, sol);
+      const [ok, errors] = pathfinder.verifySolution(banners, sol, { last });
       return {
         ...sol,
         verified: ok,
         verify_errors: errors,
         units_pulled_all: annotateUnits(sol.actions.flatMap((a) => a.units_pulled), master),
         // The roll-table cells each action pulls, for the track table view.
-        cells: pathfinder.solutionCells(banners, sol),
+        cells: pathfinder.solutionCells(banners, sol, { last }),
+        // Its pulls that dupe the cat before (each a jump, usually to the
+        // other track), and the banners where the pull after it would.
+        dupes: pathfinder.solutionDupes(banners, sol, { last }),
+        next_dupes: pathfinder.nextDupes(banners, sol),
       };
     }),
   };
+}
+
+// The name in the tables of a Cat Guide unit (by uid), or null if no gacha
+// has it (then it can't be duped).
+function tableName(dataset, uid) {
+  if (uid === null || uid === undefined) return null;
+  const cat = catOfUid(uid);
+  return dataset.cats.has(cat) ? dataset.nameOf(cat) : null;
 }
 
 // Never skip a Legend Rare: the spots where a searched banner has one, but
@@ -181,11 +194,13 @@ export function legendRareSpots(dataset, banners) {
 
 // Run the path search on built banners; the result the page shows. With a
 // wishlist, `ranking` can rank paths by its order (see pathfinder.RANKINGS);
-// `noSkip`: units not to skip (see pathfinder.findPaths).
+// `noSkip`: units not to skip; `last`: the cat pulled just before (see
+// pathfinder.findPaths).
 export function runSearch(banners, master, owned, resources, {
   wishlist = null,
   ranking = pathfinder.RANK_COUNT,
   noSkip = null,
+  last = null,
   mode = pathfinder.MODE_RESOURCE_LIMIT,
   maxSteps = MAX_STEPS,
   maxSolutions = 20,
@@ -198,14 +213,14 @@ export function runSearch(banners, master, owned, resources, {
   const report = computeTargets(banners, master, owned, wishlist, { ordered: ranking !== pathfinder.RANK_COUNT });
   const stats = {};
   const solutions = pathfinder.findPaths(banners, report.targets, {
-    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, ranking, noSkip, maxSteps, maxSolutions,
+    resources: res, bannerLimits: bannerLimitsFor(banners, res), mode, ranking, noSkip, last, maxSteps, maxSolutions,
     timeLimitMs, maxStates, onProgress, stats,
   });
   return {
     targets: report.targets,
     owned_in_banners: report.owned_in_banners,
     unmatched: [...new Set(report.unmatched)].sort(),
-    ...describe(banners, master, solutions),
+    ...describe(banners, master, solutions, { last }),
     // How the search went: steps taken, states kept, and "steps" / "time" /
     // "states" if a cap stopped it (then cheaper paths may exist).
     search: stats,
@@ -282,7 +297,8 @@ function wishFor(dataset, wish) {
 // targets: `body.wish` ({units: [{uid, on}], most wanted first, ranking}, from
 // the Wishlist tab: its ticked units), or `body.wishlist` (names, ranked by
 // count), or else every unit you don't own. `body.keep_legends`: never skip a
-// Legend Rare (legendRareSpots).
+// Legend Rare (legendRareSpots). `body.last`: the uid of the cat you pulled
+// just before this seed (your first pull is rerolled if it's the same Rare).
 // Throws on a seed that isn't a number from 0 to 2^32 - 1.
 export function searchRequest(dataset, master, body, {
   today, timeLimitMs = null, maxStates = null, onProgress = null, maxSteps = MAX_STEPS,
@@ -301,6 +317,7 @@ export function searchRequest(dataset, master, body, {
     wishlist,
     ranking,
     noSkip: body.keep_legends ? legendRareSpots(dataset, ingestion.banners) : null,
+    last: tableName(dataset, body.last),
     mode: body.mode ?? pathfinder.MODE_RESOURCE_LIMIT,
     maxSolutions: body.max_solutions ?? 20,
     maxSteps,
@@ -311,8 +328,8 @@ export function searchRequest(dataset, master, body, {
   return {
     ...result, seed: body.seed, wishlist, ranking: wishlist ? ranking : pathfinder.RANK_COUNT, wish_ranks: ranks,
     keep_legends: Boolean(body.keep_legends), skipped: ingestion.skipped,
-    // What a saved plan needs to build these tables again.
-    depth: count, event_ids: ingestion.banners.map((b) => b.eventId), resources,
+    // What a saved plan needs to build these tables and paths again.
+    depth: count, event_ids: ingestion.banners.map((b) => b.eventId), resources, last: body.last ?? null,
     data: dataInfo(dataset), disclaimer: DISCLAIMER,
   };
 }
@@ -327,9 +344,12 @@ export function followedRequest(master, { solution, owned = [], resources = null
       if (unit) pulled.add(unit.uid);
     }
   }
+  const lastName = solution.actions?.at(-1)?.units_pulled.at(-1);
   return {
     ...followedResult(master, solution, owned, resources),
     pulled_uids: [...pulled],
+    // The path's last cat: your next pull is rerolled if it's the same Rare.
+    last_uid: (lastName && master.matcher.match(lastName)?.uid) ?? null,
     prompt: "Path recorded. Your new seed has been filled in automatically — verify it on bc.godfat.org, then search again.",
   };
 }
@@ -352,10 +372,10 @@ export function unitsHash(units) {
 }
 
 // A search result's path, saved as a plan: what builds it again (the seed,
-// table depth, its banners in order, the rare tickets it was planned with and
-// its steps), which of the units it pulls are its targets (bits over the
-// different units, in the order they're first pulled) and a hash of all it
-// pulls.
+// table depth, its banners in order, the rare tickets it was planned with,
+// the cat pulled before it and its steps), which of the units it pulls are
+// its targets (bits over the different units, in the order they're first
+// pulled) and a hash of all it pulls.
 export function planOf(result, solution) {
   const pulled = solution.actions.flatMap((a) => a.units_pulled);
   const distinct = [...new Set(pulled)];
@@ -368,6 +388,7 @@ export function planOf(result, solution) {
     seed: String(result.seed),
     depth: result.depth,
     rareTickets: result.resources.rare_tickets,
+    last: result.last ?? null,
     events: result.event_ids,
     steps: pathfinder.stepsOf(solution),
     hits,
@@ -388,7 +409,8 @@ export function planRequest(dataset, master, plan) {
   const depth = Math.max(1, Math.min(plan.depth, MAX_COUNT));
   const banners = plan.events.map((id) => dataset.banner(plan.seed, id, depth));
   if (banners.some((b) => b === null)) return { ...base, problem: "gone" };
-  const replay = (isTarget) => pathfinder.replaySteps(banners, plan.steps, { rareTickets: plan.rareTickets, isTarget });
+  const last = tableName(dataset, plan.last);
+  const replay = (isTarget) => pathfinder.replaySteps(banners, plan.steps, { rareTickets: plan.rareTickets, isTarget, last });
   const first = replay(undefined);
   if (!first) return { ...base, problem: "broken" };
   const pulled = first.flatMap((a) => a.units_pulled);
@@ -404,6 +426,6 @@ export function planRequest(dataset, master, plan) {
       const id = dataset.catIdOf(name);
       return [name, id === null ? null : uidOfCat(id)];
     })),
-    ...describe(banners, master, [pathfinder.summarize(actions)]),
+    ...describe(banners, master, [pathfinder.summarize(actions)], { last }),
   };
 }

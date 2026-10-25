@@ -1,12 +1,65 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest changes (never skipping a
-Legend Rare, wishlists, deeper tables, the repo clean-up) first, then the
-webapp's sections in the order they happened, then the early
+building the Battle Cats Gacha Explorer: the latest changes (dupes after any
+cat, never skipping a Legend Rare, wishlists, deeper tables, the repo
+clean-up) first, then the webapp's sections in the order they happened, then
+the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Dupes after any cat, and the track switches shown
+
+The user asked to make sure the Path Finder accounts for track switches caused
+by duplicate Rares, and to show them clearly, to know in advance where one
+happens.
+
+- **What already worked:** godfat's dupe rule, a Rare equal to the cat pulled
+  just before is rerolled and you jump (to the other track, or two rows down
+  the same one after two re-picks), with the last cat known at every pull,
+  inside 11-draws too. Best paths go through several: 5 and 7 for two seeds
+  on all banners, nearly all inside 11-draws, where a step only showed its
+  start and end ("45A → 56B").
+- **Gap 1: dupes after another banner's cat.** The tables (like godfat's page)
+  only had a dupe line where the cat before it on the same banner's track (or
+  a reroll landing there) was the same cat, and the search only rerolled
+  there. But the game rerolls after any banner's cat: godfat's own link for a
+  cat opens the next table with `last=` that cat (and its seed at 1A), whatever
+  event you then pick, and checks that table's first cell against it
+  (`fill_cat_links`, `duped?`: same id, a Rare). With banners whose rates
+  differ (Lone Moon Lunos's 6470 / 2600 / 900 against the usual 6970 / 2500 /
+  500), a row can be a Super Rare on one and a Rare on the other, so the same
+  Rare follows from another banner with no dupe line: 0, 28 and 56 such spots
+  in 400 rows for three seeds. Example on the recorded data: Stilts Cat on the
+  second banner at 7A, then the first banner's 8A (Stilts Cat again, its own 7A
+  being Shaman Cat) is rerolled to Archer Cat and jumps to 9B, where the old
+  search went on to 9A.
+- **The fix:** every Rare cell gets its reroll (`reroll_*`, the same as the
+  dupe line, which depends only on the cell: a test checks they're equal
+  wherever godfat shows one), used whenever the cell's cat equals the last
+  cat. An 11-draw's uber comes from its 11th roll (godfat picks it with that
+  cell's rarity seed): every cell of a guaranteed banner gets the uber it would
+  give as the 11th (`uber11_*`), so a draw whose first pull dupes another
+  banner's cat gets the right one too. A test checks 700+ guaranteed cells
+  give godfat's G and RG this way.
+- **Gap 2: the first pull.** The cat pulled before the seed wasn't known. Now
+  a "Last cat" field in the top bar (a Cat Guide uid in the link, `l=`, and in
+  the browser's copy) starts the search from it; "I followed this path" fills
+  it in with the path's last cat, and a saved plan keeps it (plan code format
+  2, which still reads format 1 codes).
+- **Results:** the recorded "guaranteed banners" and "dupe paths" searches
+  kept their best paths, but paths further down the list now go through
+  dupes after another banner's cat (cheaper ones the old search couldn't
+  see), so those two were re-recorded (see the fixture's `_about`); the tests
+  compare the Python's tables and results without this app's new cells.
+- **Shown:** a path's title lists its switches ("🔀 5 track switches: 1A→2B,
+  51B→53A, …"); under each step, each one, with its pull, the cat repeated,
+  what you get instead and where you land; the track table outlines them (and
+  draws the dupe line where godfat's table has none, or the uber an 11-draw
+  then gets); and when the next pull after a path would be one, it says on
+  which banners.
+- No measurable cost on the search benchmarks (7.6 s, 2.2 s, 13.2 s).
 
 ## Never skipping a Legend Rare
 

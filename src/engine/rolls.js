@@ -209,11 +209,21 @@ function fillGuaranteed(pool, rows, guaranteedRolls, cat) {
 
 // The roll table, position -> {unit, unit_seed, alt_unit, alt_next, alt_seed,
 // guaranteed_unit, guaranteed_next, guaranteed_seed, alt_guaranteed_unit, ...}
-// (the keys godfat's scraped tables had, so the search reads either).
+// (the keys godfat's scraped tables had, so the search reads either), plus
+// what his page doesn't show, for a pull after any cat, from any banner:
+//   reroll_unit / _next / _seed: on every Rare cell, what it gives when it
+//     dupes your last cat, and where you jump. (godfat's dupe line is the
+//     same reroll, shown only where the cell before it on its track, or a
+//     reroll landing there, is the same cat.)
+//   uber11_unit / _next / _seed: on a guaranteed banner, the uber an 11-draw
+//     gets when this cell is its 11th roll (godfat picks it with this cell's
+//     rarity seed) and where it lands: the other track, one seed on.
 export function buildRolls(seed, pool, count, guaranteedRolls, nameOf) {
   const nextPos = (c) => (c.next !== null ? c.next.pos : null);
   const out = {};
-  for (const row of buildCats(seed, pool, count, guaranteedRolls)) {
+  const rows = buildCats(seed, pool, count, guaranteedRolls);
+  const posAt = (index, track) => (index < rows.length ? rows[index][track].pos : null);
+  for (const row of rows) {
     for (const cat of row) {
       const entry = { unit: nameOf(cat.id), unit_seed: String(cat.slotSeed) };
       if (cat.rerolled !== null) {
@@ -233,6 +243,23 @@ export function buildRolls(seed, pool, count, guaranteedRolls, nameOf) {
         entry.guaranteed_unit = nameOf(g.id);
         entry.guaranteed_next = nextPos(g);
         entry.guaranteed_seed = String(g.slotSeed);
+      }
+      if (cat.rarity === RARE && cat.id > 0) {
+        // Landing as in buildCats: one row down per two seeds the re-picks
+        // took, switching track on an odd number.
+        const r = cat.rerolled ?? reroll(pool, cat);
+        const index = cat.sequence - 1;
+        entry.reroll_unit = nameOf(r.id);
+        entry.reroll_next = r.steps === null
+          ? null
+          : posAt(index + Math.floor((cat.track + r.steps) / 2) + 1, ((cat.track + r.steps - 1) ^ 1) & 1);
+        entry.reroll_seed = String(r.slotSeed);
+      }
+      if (guaranteedRolls === 11) {
+        const g = newCat(pool, UBER, cat.raritySeed, cat.sequence, cat.track);
+        entry.uber11_unit = nameOf(g.id);
+        entry.uber11_next = posAt(cat.sequence - (cat.track ^ 1), cat.track ^ 1);
+        entry.uber11_seed = String(g.slotSeed);
       }
       out[cat.pos] = entry;
     }

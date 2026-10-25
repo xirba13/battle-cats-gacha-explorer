@@ -172,16 +172,20 @@ export function decodeResources(s) {
   return out;
 }
 
+// The last cat pulled (l=), as a Cat Guide uid, or null.
+const decodeLast = (s) => (s && /^\d+$/.test(s) ? Number(s) : null);
+
 // Synchronous read of the hash: owned, the wishlists and the plan stay code
 // strings (decode them once the Cat Guide list is loaded), seed + resources
-// are parsed directly. `view`: a shared plan, opened read-only (v=1);
-// `sharedWish`: a shared wishlist's code, to add to yours (wish=).
+// + the last cat are parsed directly. `view`: a shared plan, opened read-only
+// (v=1); `sharedWish`: a shared wishlist's code, to add to yours (wish=).
 export function readRawState() {
   const p = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return {
     ownedCode: p.get("o") || "",
     seed: p.get("s") || "",
     resources: decodeResources(p.get("r")),
+    lastCat: decodeLast(p.get("l")),
     tab: p.get("t") || "",
     wishCode: p.get("w") || "",
     planCode: p.get("p") || "",
@@ -190,12 +194,13 @@ export function readRawState() {
   };
 }
 
-export function buildHash({ ownedCode, seed, resources, tab, wishCode, planCode, view }) {
+export function buildHash({ ownedCode, seed, resources, lastCat, tab, wishCode, planCode, view }) {
   const p = new URLSearchParams();
   if (view) p.set("v", "1");
   if (ownedCode) p.set("o", ownedCode);
   if (seed) p.set("s", seed);
   p.set("r", encodeResources(resources));
+  if (lastCat !== null && lastCat !== undefined) p.set("l", String(lastCat));
   if (wishCode) p.set("w", wishCode);
   if (planCode) p.set("p", planCode);
   if (tab) p.set("t", tab);

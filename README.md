@@ -26,7 +26,9 @@ It has four tabs:
    daily, so bc.godfat.org being slow or down doesn't matter), computes optimal
    paths to the units you don't own yet, or to the wishlist units you tick even
    if you own them (each path ends at its last target), shows them on a
-   godfat-style **track table**, lets you **save a path as your plan** (kept until
+   godfat-style **track table**, marks every **track switch** a path goes through
+   (a dupe: the same Rare as the cat before, on any banner, rerolled), lets you
+   **save a path as your plan** (kept until
    you follow it, and shareable as a read-only link), and offers an **"I followed
    this path"** button that marks every newly pulled unit as owned, decrements
    your resources, and **auto-fills your new seed**.
@@ -81,7 +83,9 @@ and saved in your browser (localStorage), so:
 1. **Cat Guide** tab — mark what you already own (click tiles; use the search box
    to find units). Copy your link/code to save it.
 2. Top bar — enter your **seed** and your **resources** (rare tickets, cat food,
-   platinum tickets, legend tickets).
+   platinum tickets, legend tickets), and your **last cat** if you know it (the
+   cat you pulled just before that seed: your first pull is rerolled if it's the
+   same Rare; following a path fills it in).
 3. **Wishlist** tab (optional) — add the units you want, most wanted first, and
    pick how its order ranks paths.
 4. **Path Finder** tab — *Fetch Upcoming banners*, tick the banners to search
@@ -140,12 +144,17 @@ pnpm test
   Upcoming lists, ten complete searches (guaranteed banners, dupes, capsules,
   every mode, a 197-target search, the wishlist over owned units…) and "I followed
   this path" results. If you change the search on purpose, they show exactly
-  what changed. It also covers the search's time and memory caps.
+  what changed (two searches were re-recorded when dupes after another banner's
+  cat were fixed; see the fixture's `_about`). It also covers the search's time
+  and memory caps.
 - **The rules:** `pathfinder.test.mjs` (costs, tickets first, 11-rolls, capsules,
   paths ending at their last target, dupes, track-table cells, the wishlist
-  rankings, replaying a path from its steps), `wishlist.test.mjs` (wishlist
-  searches, saved plans built again, the wishlist and plan codes, sharing a
-  wishlist), `godfat-data.test.mjs` (cutting
+  rankings, replaying a path from its steps), `dupes.test.mjs` (a Rare after
+  the same cat from another banner, or the last cat before the path, is
+  rerolled; 11-draw ubers after one; a path's track switches),
+  `wishlist.test.mjs` (wishlist searches, never skipping a Legend Rare, saved
+  plans built again, the wishlist and plan codes, sharing a wishlist),
+  `godfat-data.test.mjs` (cutting
   godfat's YAML down, series end dates, the Upcoming list, banners, seeds),
   `catalog.test.mjs` (the Cat Guide list's uid guards, name matching, targets and
   the wishlist, "I followed this path"), `owncode.test.mjs` (the URL code, and a

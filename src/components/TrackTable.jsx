@@ -79,6 +79,26 @@ export default function TrackTable({ result, path, ranks = null }) {
     return map;
   }, [path]);
   const endH = path ? halfRow(path.final_position) : -1;
+  // The path's dupes where godfat's table has no dupe line (after another
+  // banner's cat, or the cat before the path), drawn on their cells all the
+  // same: "banner|pos|alt" -> {unit, next}; and the uber an 11-draw gets when
+  // its first pull dupes so ("banner|pos|alt_guaranteed").
+  const extra = useMemo(() => {
+    const map = new Map();
+    if (!path) return map;
+    for (const d of path.dupes || []) {
+      const j = path.actions[d.action].banner_index;
+      if (!banners[j].rolls[d.pos]?.alt_unit) map.set(`${j}|${d.pos}|alt`, { unit: d.got, next: d.next });
+    }
+    path.cells?.forEach((cells, k) => {
+      const a = path.actions[k];
+      const g = cells.find((c) => c.result === "alt_guaranteed");
+      if (g && !banners[a.banner_index].rolls[g.pos]?.alt_guaranteed_unit) {
+        map.set(`${a.banner_index}|${g.pos}|alt_guaranteed`, { unit: a.units_pulled.at(-1), next: a.position_to });
+      }
+    });
+    return map;
+  }, [path, banners]);
 
   const wrapRef = useRef(null);
   const headRef = useRef(null);
@@ -129,6 +149,7 @@ export default function TrackTable({ result, path, ranks = null }) {
         targets={targets}
         ranks={ranks}
         marks={marks.get(h) || ""}
+        extra={extra}
         isNext={h === endH}
         spacerB={h === start ? n + 1 : 0}
       />
@@ -146,6 +167,7 @@ export default function TrackTable({ result, path, ranks = null }) {
         <span className="legend small">
           <span className="lg target" title="The units searched for: your ticked wishlist units (#: their place on it), or every unit you don't own">target</span>
           <span className="lg on-path">selected path</span>
+          <span className="lg switch" title="A dupe on the path: the same Rare as your last cat, so it's rerolled and you jump, usually to the other track">🔀 track switch</span>
           <span className="lg next">next pull after the path</span>
         </span>
       </div>
@@ -186,20 +208,21 @@ export default function TrackTable({ result, path, ranks = null }) {
   );
 }
 
-const TrackRow = memo(function TrackRow({ h, banners, cols, units, targets, ranks, marks, isNext, spacerB }) {
+const TrackRow = memo(function TrackRow({ h, banners, cols, units, targets, ranks, marks, extra, isNext, spacerB }) {
   const pos = posLabel(h);
   return (
     <tr>
       <th className={`pos ${isNext ? "next" : ""}`} rowSpan={2}>{pos}</th>
       {cols.map((c, k) => (
-        <Cell key={k} pos={pos} col={c} banner={banners[c.j]} units={units} targets={targets} ranks={ranks} marks={marks} />
+        <Cell key={k} pos={pos} col={c} banner={banners[c.j]} units={units} targets={targets} ranks={ranks} marks={marks}
+          extra={extra} />
       ))}
       {spacerB > 0 && <td className="spacer" colSpan={spacerB} />}
     </tr>
   );
 }, (a, b) =>
   a.h === b.h && a.banners === b.banners && a.cols === b.cols && a.targets === b.targets && a.ranks === b.ranks &&
-  a.marks === b.marks && a.isNext === b.isNext && a.spacerB === b.spacerB);
+  a.marks === b.marks && a.extra === b.extra && a.isNext === b.isNext && a.spacerB === b.spacerB);
 
 // A unit's name, with its wishlist place when it's a ranked target.
 function UnitName({ name, targets, ranks }) {
@@ -212,14 +235,16 @@ function UnitName({ name, targets, ranks }) {
   );
 }
 
-function Cell({ pos, col, banner, units, targets, ranks, marks }) {
+function Cell({ pos, col, banner, units, targets, ranks, marks, extra }) {
   const e = banner.rolls[pos];
   const g = col.kind === "guaranteed";
   const main = e && (g ? e.guaranteed_unit : e.unit);
   if (!main) return <td className="cell empty" rowSpan={2} />;
   const mainNext = g ? e.guaranteed_next : null;
-  const alt = g ? e.alt_guaranteed_unit : e.alt_unit;
-  const altNext = g ? e.alt_guaranteed_next : e.alt_next;
+  // The dupe line: godfat's, or the path's own dupe there.
+  const own = extra.get(`${col.j}|${pos}|${g ? "alt_guaranteed" : "alt"}`);
+  const alt = (g ? e.alt_guaranteed_unit : e.alt_unit) ?? own?.unit;
+  const altNext = (g ? e.alt_guaranteed_next : e.alt_next) ?? own?.next;
   // The path's result is shaded: the whole cell, or with a dupe line just the
   // part the path gets (the cat on top, or the dupe line).
   const mainOn = marks.includes(`|${col.j}:${g ? "guaranteed" : "unit"}|`);
@@ -236,8 +261,9 @@ function Cell({ pos, col, banner, units, targets, ranks, marks }) {
         {mainNext && <span className="jump"> → {mainNext}</span>}
       </div>
       {alt && (
-        <div className={`dupe ${altOn ? "on-path" : ""}`}>
-          <span className="dupe-tag">dupe</span>
+        <div className={`dupe ${altOn ? "on-path switch" : ""}`}
+          title={altOn ? `On the path: ${main} again, so ${alt} instead, and you jump to ${altNext}` : undefined}>
+          <span className="dupe-tag">{altOn ? "🔀" : "dupe"}</span>
           <UnitName name={alt} targets={targets} ranks={ranks} />
           {altNext && <span className="jump">→ {altNext}</span>}
         </div>

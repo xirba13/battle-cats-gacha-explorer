@@ -2,7 +2,8 @@
 // recorded in tests/fixtures/golden.json before the Python was removed (its
 // make_golden.py is in git history): roll tables, Upcoming lists, complete
 // search results and "I followed this path" results. The engine must keep
-// giving exactly the same ones.
+// giving exactly the same ones, but for two searches re-recorded when dupes
+// after another banner's cat were fixed (see the fixture's _about).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -19,6 +20,14 @@ const readJson = (...parts) => JSON.parse(readFileSync(join(here, ...parts), "ut
 const golden = readJson("fixtures", "golden.json");
 const datasets = Object.fromEntries(Object.entries(golden.datasets).map(([k, v]) => [k, new Dataset(v)]));
 const master = new MasterData(golden.master);
+
+// What the engine adds that the Python's results didn't have: cells for pulls
+// after any cat (rerolls, 11-draw ubers by their 11th roll) and each path's
+// dupes.
+const OURS_ONLY = /^(reroll|uber11)_/;
+const pythonRolls = (rolls) => Object.fromEntries(Object.entries(rolls).map(([pos, cell]) =>
+  [pos, Object.fromEntries(Object.entries(cell).filter(([k]) => !OURS_ONLY.test(k)))]));
+const pythonSolutions = (solutions) => solutions.map(({ dupes, next_dupes, ...rest }) => rest);
 
 // The Python's json.dumps(sort_keys=True, ensure_ascii=False, separators=(",", ":")).
 function canonical(v) {
@@ -49,8 +58,8 @@ test("roll tables match the Python's, cell for cell", () => {
       continue;
     }
     assert.equal(Object.keys(banner.rolls).length, t.cells, where);
-    assert.deepEqual(banner.rolls["1A"], t.first, where);
-    assert.equal(digest(banner.rolls), t.digest, where);
+    assert.deepEqual(pythonRolls(banner.rolls)["1A"], t.first, where);
+    assert.equal(digest(pythonRolls(banner.rolls)), t.digest, where);
   }
   assert.ok(golden.tables.length > 100);
 });
@@ -76,7 +85,8 @@ for (const s of golden.searches) {
       best_cost: first ? first.cost : null,
       best_steps: first ? first.actions.map((a) => `${a.banner_index}:${a.action_type}:${a.position_from}>${a.position_to}`) : null,
     }, s.summary);
-    assert.equal(digest(Object.fromEntries(PYTHON_KEYS.map((k) => [k, result[k]]))), s.digest);
+    const python = { ...result, solutions: pythonSolutions(result.solutions) };
+    assert.equal(digest(Object.fromEntries(PYTHON_KEYS.map((k) => [k, python[k]]))), s.digest);
     for (const sol of result.solutions) assert.ok(sol.verified, sol.verify_errors.join("; "));
   });
 }

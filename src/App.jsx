@@ -56,6 +56,9 @@ export default function App() {
   const [owned, setOwnedState] = useState(new Set());
   const [seed, setSeed] = useState(raw0.seed);
   const [resources, setResources] = useState(raw0.resources);
+  // The cat you pulled just before this seed (a Cat Guide uid): your next
+  // pull is rerolled if it's the same Rare.
+  const [lastCat, setLastCat] = useState(raw0.lastCat ?? null);
   const [ownedCode, setOwnedCode] = useState(raw0.ownedCode);
   const [wishes, setWishes] = useState(emptyWishes);
   const [plan, setPlan] = useState(null);
@@ -139,10 +142,10 @@ export default function App() {
   // nor for a shared plan).
   useEffect(() => {
     if (!ready) return;
-    const state = { ownedCode, seed, resources, tab, wishCode, planCode };
+    const state = { ownedCode, seed, resources, lastCat, tab, wishCode, planCode };
     writeHash({ ...state, view });
     if (saving && !conflict && !view) save(state);
-  }, [ready, ownedCode, seed, resources, tab, wishCode, planCode, saving, conflict, view]);
+  }, [ready, ownedCode, seed, resources, lastCat, tab, wishCode, planCode, saving, conflict, view]);
 
   // The link and the browser's copy differ: keep the link's data (it's then
   // saved), or switch to the saved data.
@@ -151,6 +154,7 @@ export default function App() {
     if (!conflict || !maps) return;
     setSeed(conflict.saved.seed);
     setResources(conflict.saved.resources);
+    setLastCat(conflict.saved.lastCat ?? null);
     setOwnedCode(conflict.saved.ownedCode);
     setOwnedState(new Set(conflict.savedOwned));
     setWishes(decodeWishes(conflict.saved.wishCode, maps.uids));
@@ -190,9 +194,9 @@ export default function App() {
   // Links to share: a plan opens read-only (everything here, with v=1); a
   // wishlist adds a copy of it to whoever opens it.
   const links = useMemo(() => ({
-    plan: () => pageUrl() + buildHash({ ownedCode, seed, resources, tab: "paths", wishCode, planCode, view: true }),
+    plan: () => pageUrl() + buildHash({ ownedCode, seed, resources, lastCat, tab: "paths", wishCode, planCode, view: true }),
     wishlist: (list) => `${pageUrl()}#wish=${encodeList(list)}`,
-  }), [ownedCode, seed, resources, wishCode, planCode]);
+  }), [ownedCode, seed, resources, lastCat, wishCode, planCode]);
 
   // From a shared plan: add its open wishlist to yours, or go to your data.
   const addSharedList = useCallback(() => reloadWith(`#wish=${encodeList(wishes.lists[wishes.open])}`), [wishes]);
@@ -206,6 +210,9 @@ export default function App() {
         setSeed={setSeed}
         resources={resources}
         setResources={setResources}
+        lastCat={lastCat}
+        setLastCat={setLastCat}
+        units={master?.units}
         ownedCount={owned.size}
         disclaimer={master?.disclaimer}
       />
@@ -237,8 +244,10 @@ export default function App() {
         <SavedConflict
           conflict={conflict}
           uids={maps?.uids}
+          units={master?.units}
           link={{
             owned: conflict.linkOwned, seed: start.current.url.seed, resources: start.current.url.resources,
+            lastCat: start.current.url.lastCat,
             wishCode: start.current.url.wishCode, planCode: start.current.url.planCode,
           }}
           onKeepLink={keepLink}
@@ -291,6 +300,8 @@ export default function App() {
             setSeed={setSeed}
             resources={resources}
             setResources={setResources}
+            lastCat={lastCat}
+            setLastCat={setLastCat}
             replaceOwned={replaceOwned}
             wishes={wishes}
             setWishes={setWishes}
@@ -308,8 +319,9 @@ export default function App() {
   );
 }
 
-const describe = ({ owned, seed, resources: r, wishes, plan }) =>
-  `${owned.size} units owned · seed ${seed || "none"} · ${r.rare_tickets} rare tickets, ` +
+const describe = ({ owned, seed, resources: r, lastCat, wishes, plan }, nameOf) =>
+  `${owned.size} units owned · seed ${seed || "none"}${lastCat != null ? ` (after ${nameOf(lastCat)})` : ""} · ` +
+  `${r.rare_tickets} rare tickets, ` +
   `${r.cat_food} cat food, ${r.platinum_tickets} platinum, ${r.legend_tickets} legend · ` +
   `${wishes.lists.length} wishlist${wishes.lists.length === 1 ? "" : "s"} ` +
   `(${wishes.lists.reduce((n, l) => n + l.units.length, 0)} units)` +
@@ -318,18 +330,19 @@ const describe = ({ owned, seed, resources: r, wishes, plan }) =>
 // Shown when the page was opened with a link whose data isn't what this
 // browser saved, so an old bookmark or someone else's link can't silently
 // replace the saved collection.
-function SavedConflict({ conflict, link, uids, onKeepLink, onUseSaved }) {
+function SavedConflict({ conflict, link, uids, units, onKeepLink, onUseSaved }) {
   const { saved, savedOwned } = conflict;
   const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : null;
   const full = (s) => ({ ...s, wishes: decodeWishes(s.wishCode, uids), plan: decodePlan(s.planCode) });
+  const nameOf = (uid) => units?.find((u) => u.uid === uid)?.name ?? `#${uid}`;
   return (
     <div className="saved-conflict">
       <div>
         <b>This link's data isn't the same as what this browser saved{when ? ` (${when})` : ""}.</b>{" "}
         Which do you want to keep? Until you choose, nothing is saved over this browser's copy.
       </div>
-      <div className="small">Link: {describe(full(link))}</div>
-      <div className="small">Saved: {describe(full({ ...saved, owned: savedOwned }))}</div>
+      <div className="small">Link: {describe(full(link), nameOf)}</div>
+      <div className="small">Saved: {describe(full({ ...saved, owned: savedOwned }), nameOf)}</div>
       <div className="save-actions">
         <button className="primary" onClick={onKeepLink}>Keep the link's</button>
         <button onClick={onUseSaved}>Use the saved ones</button>

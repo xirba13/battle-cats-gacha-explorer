@@ -26,6 +26,9 @@ const dataset = new Dataset(JSON.parse(readFileSync(join(fixtures, "godfat_fixtu
 const FIXTURE_EVENTS = ["2025-12-09_1019", "2025-12-09_1020", "2025-04-28_946", "2025-12-12_1005", "2025-11-07_996"];
 // Cats godfat has renamed since the fixture was saved (his page then, his data now).
 const RENAMED = { "Amakusa Shiro": "Shiro Amakusa", Terun: "Huntress Terun" };
+// This app's own cells, which godfat's page doesn't show (see buildRolls).
+const OURS_ONLY = /^(reroll|uber11)_/;
+const SEED = 139026851;
 
 test("tables match godfat's, cell for cell", () => {
   // Each cat's link carries the seed after pulling it; 1A's is two steps in.
@@ -43,7 +46,8 @@ test("tables match godfat's, cell for cell", () => {
     const ours = dataset.banner(seed, eventId, count).rolls;
     assert.deepEqual(Object.keys(ours).sort(), Object.keys(table).sort(), eventId);
     for (const [pos, cell] of Object.entries(table)) {
-      const mine = Object.fromEntries(Object.entries(ours[pos]).map(([k, v]) => [k, RENAMED[v] ?? v]));
+      const mine = Object.fromEntries(Object.entries(ours[pos]).filter(([k]) => !OURS_ONLY.test(k))
+        .map(([k, v]) => [k, RENAMED[v] ?? v]));
       assert.deepEqual(mine, cell, `${eventId} ${pos}`);
       compared += Object.keys(cell).length;
       dupes += "alt_unit" in cell;
@@ -54,6 +58,56 @@ test("tables match godfat's, cell for cell", () => {
   // 1,400 cells / 6,268 values, with every kind of cell in them.
   assert.equal(compared, 6268);
   assert.deepEqual([dupes, dupeGuaranteed, guaranteed], [20, 20, 1116]);
+});
+
+test("every Rare cell has its reroll, the same as godfat's dupe lines", () => {
+  // A cat pulled after the same Rare (from any banner) is rerolled. A reroll
+  // depends only on its cell, so where godfat shows the dupe line (the cat
+  // before it on its track was the same) it's the very same reroll.
+  let rares = 0;
+  let lines = 0;
+  for (const eventId of FIXTURE_EVENTS) {
+    for (const cell of Object.values(dataset.banner(SEED, eventId, 100).rolls)) {
+      if (dataset.rarityOf(cell.unit) !== RARE) {
+        assert.ok(!("reroll_unit" in cell), cell.unit);
+        continue;
+      }
+      rares += 1;
+      assert.ok("reroll_unit" in cell && cell.reroll_unit !== cell.unit, cell.unit);
+      if ("alt_unit" in cell) {
+        lines += 1;
+        assert.deepEqual([cell.reroll_unit, cell.reroll_next, cell.reroll_seed], [cell.alt_unit, cell.alt_next, cell.alt_seed]);
+      }
+    }
+  }
+  assert.ok(lines > 0 && rares > 10 * lines);
+});
+
+test("an 11-draw's uber is its 11th roll's, as in godfat's guaranteed cells", () => {
+  // Pulling ten times from a cell (from its dupe line when the first pull
+  // dupes) ends on the 11th roll, whose uber11 is godfat's G (or RG) cell.
+  const after10 = (rolls, pos, last) => {
+    for (let k = 0; k < 10; k++) [last, pos] = pathfinder.getNextPosNormal(pos, null, rolls, last);
+    return rolls[pos];
+  };
+  let checked = 0;
+  for (const eventId of FIXTURE_EVENTS.slice(0, 4)) {
+    const rolls = dataset.banner(SEED, eventId, 100).rolls;
+    for (const [pos, cell] of Object.entries(rolls)) {
+      if ("guaranteed_unit" in cell) {
+        const g = after10(rolls, pos, null);
+        assert.deepEqual([g.uber11_unit, g.uber11_next, g.uber11_seed], [cell.guaranteed_unit, cell.guaranteed_next, cell.guaranteed_seed]);
+        checked += 1;
+      }
+      if ("alt_guaranteed_unit" in cell) {
+        const g = after10(rolls, pos, cell.unit);
+        assert.deepEqual([g.uber11_unit, g.uber11_next, g.uber11_seed],
+          [cell.alt_guaranteed_unit, cell.alt_guaranteed_next, cell.alt_guaranteed_seed]);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked > 700);
 });
 
 test("guaranteed rolls and banner types follow godfat's flags", () => {

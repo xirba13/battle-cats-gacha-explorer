@@ -32,6 +32,10 @@ export default function Instructions({ disclaimer }) {
       <ul>
         <li>Enter your current <b>seed</b> and your <b>resources</b> (rare tickets,
           cat food, platinum tickets, legend tickets).</li>
+        <li><b>Last cat</b>: the cat you pulled just before this seed. If your next cat is the same
+          Rare, the game rerolls it and you switch track, so the Path Finder needs it to get your first
+          pull right. It's filled in when you follow a path; type a name if you pulled something
+          elsewhere, or clear it (✕).</li>
         <li>Everything updates the page URL automatically.</li>
       </ul>
 
@@ -100,10 +104,17 @@ export default function Instructions({ disclaimer }) {
           units with their place: #1…) and its resource cost. The selected path (the best one at
           first) also lists its exact pulls, ending at the last target; <b>click another path's
           title</b> to see its pulls instead.</li>
+        <li><b>Track switches</b>: when a pull gives the same Rare as the cat pulled just before it (on
+          any banner, or your last cat before the seed), the game rerolls it and you jump, usually to
+          the other track. Every path accounts for them, and shows them with 🔀: in its title (where
+          they happen), under the step they happen in (which pull, what you get instead and where you
+          land, inside 11-draws too) and on the track table. If your next pull after a path would be one,
+          it says so.</li>
         <li>Under the paths, the <b>track table</b> shows each banner's roll table (track A and
           track B, with an 11-draw column on guaranteed banners). The selected path is shaded, the
-          targets are in bold (with their wishlist place), and the striped position is where you'll
-          be after the path.</li>
+          targets are in bold (with their wishlist place), its track switches are outlined (🔀, also
+          where godfat's table shows no dupe line, after another banner's cat), and the striped
+          position is where you'll be after the path.</li>
         <li><b>📌 Save as my plan</b> keeps a path at the top of the Path Finder, with its pulls and
           table, until you follow or remove it: it's in the page URL and this browser, so it's there
           when you come back, without searching again. <b>Copy link for my other devices</b> carries

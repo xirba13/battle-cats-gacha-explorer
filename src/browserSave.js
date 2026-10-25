@@ -51,8 +51,8 @@ export function setSavingOff(off) {
   }
 }
 
-// What this browser saved: {ownedCode, seed, resources, tab, wishCode,
-// planCode, savedAt}, or null.
+// What this browser saved: {ownedCode, seed, resources, lastCat, tab,
+// wishCode, planCode, savedAt}, or null.
 export function loadSaved() {
   try {
     const d = JSON.parse(storage()?.getItem(KEY) || "null");
@@ -61,6 +61,7 @@ export function loadSaved() {
       ownedCode: String(d.o || ""),
       seed: String(d.s || ""),
       resources: decodeResources(d.r),
+      lastCat: Number.isInteger(d.l) ? d.l : null,
       tab: String(d.t || ""),
       wishCode: String(d.w || ""),
       planCode: String(d.p || ""),
@@ -71,10 +72,10 @@ export function loadSaved() {
   }
 }
 
-export function save({ ownedCode, seed, resources, tab, wishCode, planCode }) {
+export function save({ ownedCode, seed, resources, lastCat = null, tab, wishCode, planCode }) {
   try {
     storage()?.setItem(KEY, JSON.stringify({
-      o: ownedCode || "", s: seed || "", r: encodeResources(resources), t: tab || "", w: wishCode || "",
+      o: ownedCode || "", s: seed || "", r: encodeResources(resources), l: lastCat, t: tab || "", w: wishCode || "",
       p: planCode || "", at: new Date().toISOString(),
     }));
   } catch {
@@ -94,6 +95,7 @@ export async function compareStates(a, b, uidToId) {
   const [ownedA, ownedB] = await Promise.all([decodeOwned(a.ownedCode, uidToId), decodeOwned(b.ownedCode, uidToId)]);
   const same = a.seed === b.seed
     && encodeResources(a.resources) === encodeResources(b.resources)
+    && (a.lastCat ?? null) === (b.lastCat ?? null)
     && (a.wishCode || "") === (b.wishCode || "") && (a.planCode || "") === (b.planCode || "")
     && ownedA.size === ownedB.size && [...ownedA].every((i) => ownedB.has(i));
   return { same, ownedA, ownedB };

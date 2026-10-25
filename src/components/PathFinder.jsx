@@ -39,8 +39,8 @@ function CostLine({ cost }) {
 const pathSig = (seed, events, steps) => `${seed}|${events.join(",")}|${steps.join(",")}`;
 
 export default function PathFinder({
-  master, owned, seed, setSeed, resources, setResources, replaceOwned, wishes, setWishes, plan, setPlan, planLink,
-  view, setError, onEditWishlist,
+  master, owned, seed, setSeed, resources, setResources, lastCat, setLastCat, replaceOwned, wishes, setWishes, plan,
+  setPlan, planLink, view, setError, onEditWishlist,
 }) {
   const [events, setEvents] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
@@ -75,8 +75,8 @@ export default function PathFinder({
 
   const keepLegends = wishes.keepLegends;
   const searchSig = useMemo(
-    () => JSON.stringify({ seed, count, wish, keepLegends, ids: [...selected].sort(), owned: owned.size }),
-    [seed, count, wish, keepLegends, selected, owned]
+    () => JSON.stringify({ seed, lastCat, count, wish, keepLegends, ids: [...selected].sort(), owned: owned.size }),
+    [seed, lastCat, count, wish, keepLegends, selected, owned]
   );
   const upToDate = result && lastSig === searchSig;
 
@@ -160,6 +160,7 @@ export default function PathFinder({
         owned: [...owned],
         wish,
         keep_legends: keepLegends,
+        last: lastCat,
       };
       setResult(await api.search(payload, { onProgress: setProgress, signal: controller.signal }));
       setLastSig(searchSig);
@@ -194,6 +195,7 @@ export default function PathFinder({
       replaceOwned(new Set(res.owned));
       if (res.resources) setResources(res.resources);
       setSeed(res.new_seed || "");
+      setLastCat(res.last_uid ?? null);
       setResult(null);
       setEvents(null);
       setSelected(new Set());
@@ -201,6 +203,7 @@ export default function PathFinder({
       let msg = res.new_seed
         ? `New seed filled in automatically: ${res.new_seed} — verify on godfat, then search again.`
         : "Path recorded.";
+      if (res.last_uid !== null && res.last_uid !== undefined) msg += ` Your last cat is now ${byUid.get(res.last_uid)?.name}.`;
       msg += ` (+${res.units_added_count} new unit${res.units_added_count === 1 ? "" : "s"} owned)`;
       if (res.unmatched_units?.length)
         msg += ` · ${res.unmatched_units.length} unit(s) not in master`;
@@ -269,6 +272,7 @@ export default function PathFinder({
           setOpen={setPlanOpen}
           view={view}
           planLink={planLink}
+          lastName={plan.last === null || plan.last === undefined ? null : byUid.get(plan.last)?.name ?? `#${plan.last}`}
           onFollow={followPath}
           onRemove={() => window.confirm("Remove your saved plan?") && setPlan(null)}
         />
@@ -377,7 +381,7 @@ export default function PathFinder({
       <div ref={resultsRef}>
         {result && (
           <Results result={result} onFollow={followPath} onSave={savePlan} view={view}
-            savedSig={planSig} />
+            savedSig={planSig} byUid={byUid} />
         )}
       </div>
     </div>
@@ -422,27 +426,45 @@ function WishChecklist({ list, byUid, owned, events, selected, onTick, onTickAll
   );
 }
 
-// A path's title: the targets it gets and its cost. Wishlist units come in
-// the wishlist's order, with their places.
+// A path's title: the targets it gets, its cost and its track switches.
+// Wishlist units come in the wishlist's order, with their places.
 function PathTitle({ sol, ranks }) {
   const units = ranks
     ? [...sol.collected_units].sort((a, b) => (ranks[a] ?? Infinity) - (ranks[b] ?? Infinity))
     : sol.collected_units;
   const named = units.map((u) => (ranks?.[u] ? `#${ranks[u]} ${u}` : u));
+  const dupes = sol.dupes || [];
   return (
     <>
       <span className="sol-collected">
         🎯 {sol.collected_count} target(s): {named.join(", ")}
       </span>
       <span className="sol-cost">Cost: <CostLine cost={sol.cost} /></span>
+      {dupes.length > 0 && (
+        <span className="sol-switches" title={dupes.map((d) => `${d.pos} → ${d.next}: ${d.was} again, so ${d.got}`).join("\n")}>
+          🔀 {dupes.length} track switch{dupes.length === 1 ? "" : "es"}:{" "}
+          {dupes.slice(0, 4).map((d) => `${d.pos}→${d.next}`).join(", ")}
+          {dupes.length > 4 ? ` +${dupes.length - 4} more` : ""}
+        </span>
+      )}
     </>
   );
 }
 
-// A path's pulls, step by step, its Legend Rares tagged (`units`: the
-// result's rarity of each unit).
+// Where a dupe sends you: usually the other track, sometimes further down
+// the same one.
+const jumpText = (from, next) => {
+  if (!next) return "the table ends there";
+  return next.at(-1) !== from.at(-1) ? `switch to track ${next.at(-1)} at ${next}` : `jump down to ${next} (same track)`;
+};
+
+// A path's pulls, step by step: its Legend Rares tagged (`units`: the
+// result's rarity of each unit), and each dupe, with the track switch it
+// causes, under the step it happens in.
 function PathSteps({ sol, bannerName, units }) {
   const legends = (a) => a.units_pulled.filter((u) => units?.[u]?.rarity === "Legend Rare");
+  const dupesIn = (j) => (sol.dupes || []).filter((d) => d.action === j);
+  const last = sol.actions.at(-1)?.units_pulled.at(-1);
   return (
     <>
       <ol className="sol-steps">
@@ -464,6 +486,13 @@ function PathSteps({ sol, bannerName, units }) {
             {legends(a).length > 0 && (
               <span className="legend-tag" title="Legend Rare"> ✨ {legends(a).join(", ")}</span>
             )}
+            {dupesIn(j).map((d) => (
+              <div key={d.pull} className="dupe-note">
+                🔀 {a.units_pulled.length > 1 ? `Pull ${d.pull} (${d.pos})` : d.pos}: {d.was} again, so you get{" "}
+                <b>{d.got}</b> instead and <b>{jumpText(d.pos, d.next)}</b>.
+                {a.action_type === "guaranteed_11" && d.pull === 1 && " The guaranteed uber comes from there."}
+              </div>
+            ))}
           </li>
         ))}
       </ol>
@@ -471,6 +500,13 @@ function PathSteps({ sol, bannerName, units }) {
         Final seed position: {sol.final_position}
         {sol.final_seed && <> · resulting seed: <b>{sol.final_seed}</b></>}
       </div>
+      {sol.next_dupes?.length > 0 && (
+        <div className="warn small next-dupe">
+          🔀 Heads-up: your next pull at {sol.final_position} is {last} again on{" "}
+          {sol.next_dupes.map((n) => `${bannerName(n.banner_index)} (you'd get ${n.got} and ${jumpText(sol.final_position, n.next)})`)
+            .join("; ")}.
+        </div>
+      )}
     </>
   );
 }
@@ -488,7 +524,7 @@ const PLAN_PROBLEM = {
 
 // Your saved plan: kept in the page URL and this browser until you follow or
 // remove it, built again from its seed, banners and pulls (no search).
-function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, onFollow, onRemove }) {
+function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, lastName, onFollow, onRemove }) {
   const sol = planView?.solutions?.[0] ?? null;
   return (
     <div className="solution selected plan-card">
@@ -499,7 +535,8 @@ function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, 
         {sol ? <PathTitle sol={sol} ranks={ranks} /> : <span className="muted">{planView ? "" : "Loading…"}</span>}
       </button>
       <div className="muted small plan-meta">
-        Saved {plan.savedOn} · seed {plan.seed} · {plan.events.length} banner{plan.events.length === 1 ? "" : "s"},{" "}
+        Saved {plan.savedOn} · seed {plan.seed}{lastName ? ` after ${lastName}` : ""} ·{" "}
+        {plan.events.length} banner{plan.events.length === 1 ? "" : "s"},{" "}
         {plan.depth} rows · {plan.steps.length} step{plan.steps.length === 1 ? "" : "s"}
       </div>
       {planView?.problem && <p className="warn small">⚠️ {PLAN_PROBLEM[planView.problem]}</p>}
@@ -528,7 +565,7 @@ function PlanCard({ plan, planView, ranks, seed, open, setOpen, view, planLink, 
   );
 }
 
-function Results({ result, onFollow, onSave, view, savedSig }) {
+function Results({ result, onFollow, onSave, view, savedSig, byUid }) {
   // The selected path shows its steps and is drawn on the track table; the
   // others show only their title. A new search starts at the best one.
   const [picked, setPicked] = useState({ result: null, index: 0 });
@@ -573,6 +610,8 @@ function Results({ result, onFollow, onSave, view, savedSig }) {
         {result.targets.length > 12 ? "…" : ""}
         {result.wishlist && ` · paths ranked by: ${wl.RANKINGS.find((r) => r.id === result.ranking)?.label}`}
         {result.keep_legends && " · never skipping a Legend Rare"}
+        {result.last !== null && result.last !== undefined &&
+          ` · after your last cat, ${byUid.get(result.last)?.name ?? `#${result.last}`}`}
       </p>
       {result.unmatched?.length > 0 && (
         <p className="warn small">

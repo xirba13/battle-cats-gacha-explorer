@@ -70,6 +70,17 @@ export function guaranteedFor(entry, lastUnit) {
   return [entry.guaranteed_unit ?? null, entry.guaranteed_next ?? null, entry.guaranteed_seed ?? null];
 }
 
+// [unit, landing, seed] of the uber an 11-draw gets: `start` is its first
+// cell, and its ten normal pulls (dupes and all) end at `p`, the 11th roll,
+// which the uber replaces. This app's tables have it on that cell (uber11_*),
+// right after any last cat; godfat's only on the start row (guaranteedFor),
+// for a last cat from the same banner.
+function uberOf11(rolls, p, start, lastUnit) {
+  const cell = rolls[p];
+  if (cell && "uber11_unit" in cell) return [cell.uber11_unit, cell.uber11_next ?? null, cell.uber11_seed ?? null];
+  return guaranteedFor(start, lastUnit);
+}
+
 // --------------------------------------------------------------------------- //
 // Result model (plain objects, the shape the page shows)
 // --------------------------------------------------------------------------- //
@@ -111,14 +122,19 @@ function action(bannerIndex, actionType, payment, from, to, units, targetsHit, a
 // --------------------------------------------------------------------------- //
 
 // Resolve a single pull at `pos`: [unit, next position, note, seed after it,
-// the cell]. If the unit equals the last one pulled and the cell has a dupe
-// line, you get that line's unit and jump where it says.
+// the cell]. If the unit is a Rare equal to the last one pulled (on any
+// banner), it's rerolled: you get the cell's reroll and jump where it says.
+// This app's tables have a reroll on every Rare cell; godfat's show it as the
+// dupe line, only where the cell before is the same cat.
 export function getNextPosNormal(pos, _hint, rolls, lastUnit) {
   const entry = rolls[pos];
   if (!entry) return [null, null, null, null, null];
   const unit = entry.unit ?? null;
-  if (lastUnit && unit === lastUnit && "alt_unit" in entry) {
-    return [entry.alt_unit, entry.alt_next ?? null, "Duplicate", entry.alt_seed ?? null, entry];
+  if (lastUnit && unit === lastUnit) {
+    if ("reroll_unit" in entry) {
+      return [entry.reroll_unit, entry.reroll_next ?? null, "Duplicate", entry.reroll_seed ?? null, entry];
+    }
+    if ("alt_unit" in entry) return [entry.alt_unit, entry.alt_next ?? null, "Duplicate", entry.alt_seed ?? null, entry];
   }
   return [unit, `${parseInt(pos, 10) + 1}${pos[pos.length - 1]}`, "Normal", entry.unit_seed ?? null, entry];
 }
@@ -225,6 +241,7 @@ const SEP = "\u0001"; // can't appear in a unit name
 //     mustn't skip (Legend Rares, say). A pull at one of those positions must
 //     give a unit `keep` accepts, and no 11-draw's guaranteed uber may take
 //     the place of one.
+//   last: the cat pulled just before the path (its first pull can dupe it).
 //   maxSteps: search-iteration cap. timeLimitMs / maxStates: optional caps on
 //     time and on states kept (memory); the Python has neither. `stats.stopped`
 //     says which one stopped it early ("steps" / "time" / "states").
@@ -242,6 +259,7 @@ export function findPaths(banners, targets, {
   mode = MODE_RESOURCE_LIMIT,
   ranking = RANK_COUNT,
   noSkip = null,
+  last = null,
   maxSteps = 2_000_000,
   maxSolutions = 50,
   startPos = "1A",
@@ -306,7 +324,8 @@ export function findPaths(banners, targets, {
     const cells = new Set();
     for (const p of skipAt) {
       const cell = b.rolls[p];
-      if (cell && (!noSkip.keep(cell.unit) || ("alt_unit" in cell && !noSkip.keep(cell.alt_unit)))) cells.add(cell);
+      const reroll = cell?.reroll_unit ?? cell?.alt_unit;
+      if (cell && (!noSkip.keep(cell.unit) || (reroll !== undefined && !noSkip.keep(reroll)))) cells.add(cell);
     }
     return cells.size ? cells : null;
   });
@@ -426,19 +445,19 @@ export function findPaths(banners, targets, {
 
   const startRes = [0, 0, 0, 0];
   const startUsage = limitOf.map(() => 0);
-  push(startPos, ZERO, maskKey(ZERO), 0, null, startUsage, startRes, -1);
-  visited.set(visitedKey(startPos, maskKey(ZERO), null, startUsage), store(startRes));
+  push(startPos, ZERO, maskKey(ZERO), 0, last, startUsage, startRes, -1);
+  visited.set(visitedKey(startPos, maskKey(ZERO), last, startUsage), store(startRes));
 
-  // An 11-draw from `pos`: 10 normal pulls, then the guaranteed uber `gUnit`
-  // (guaranteed banner) or an 11th normal pull (gUnit null). Null if it runs
-  // past the table or skips a unit not to skip (`cells`: see skipCellsOf).
-  // `hits`: how many new targets it pulls.
-  const draw11 = (pos, last, rolls, gUnit, collected, cells) => {
+  // An 11-draw from `pos`: 10 normal pulls, then on a guaranteed banner its
+  // uber (`start`: the draw's first cell there), else an 11th normal pull.
+  // Null if it runs past the table or skips a unit not to skip (`cells`: see
+  // skipCellsOf). `hits`: how many new targets it pulls.
+  const draw11 = (pos, prev, rolls, start, collected, cells) => {
     let hits = 0;
     let p = pos;
-    let l = last;
+    let l = prev;
     let c = collected;
-    for (let i = gUnit ? 10 : 11; i > 0; i--) {
+    for (let i = start ? 10 : 11; i > 0; i--) {
       const [u, np, , , cell] = getNextPosNormal(p, null, rolls, l);
       if (!u || !np || !keeps(cells, cell, u)) return null;
       let isT;
@@ -447,13 +466,14 @@ export function findPaths(banners, targets, {
       p = np;
       l = u;
     }
-    if (gUnit) {
-      // The guaranteed uber takes the place of the cat on the 11th spot.
-      if (skipAt !== null && skipAt.has(p)) return null;
+    if (start) {
+      // The uber takes the place of the cat on the 11th spot.
+      const [gUnit, gNext] = uberOf11(rolls, p, start, prev);
+      if (!gUnit || !gNext || (skipAt !== null && skipAt.has(p))) return null;
       let isT;
       [c, isT] = applyUnit(gUnit, c);
       if (isT) hits += 1;
-      l = gUnit;
+      return { collected: c, hits, last: gUnit, next: gNext };
     }
     return { collected: c, hits, last: l, next: p };
   };
@@ -464,7 +484,7 @@ export function findPaths(banners, targets, {
   const replay = (node) => {
     const codes = [];
     for (let cur = node; cur >= 0; cur = stepParent[cur]) codes.push(stepCode[cur]);
-    return replaySteps(banners, codes.reverse(), { rareTickets: rareTicketBudget, isTarget, startPos });
+    return replaySteps(banners, codes.reverse(), { rareTickets: rareTicketBudget, isTarget, startPos, last });
   };
 
   let solutions = [];
@@ -509,14 +529,13 @@ export function findPaths(banners, targets, {
     // --- 11-roll (cat food only) -------------------------------------------
     const res11 = [rt, cf + CAT_FOOD_PER_11_DRAW, pt, lt];
     if (banner.hasGuaranteed) {
-      // Guaranteed banner: the 11th cat is its guaranteed uber. (No
-      // guaranteed cell here = the draw runs past the table: skip it.)
-      const [gUnit, gNext] = guaranteedFor(entry, last);
-      if (gUnit && gNext && withinCaps(res11)) {
-        const d = draw11(pos, last, banner.rolls, gUnit, collected, cells);
+      // Guaranteed banner: the 11th cat is its guaranteed uber. (None when
+      // the draw runs past the table: skip it.)
+      if (withinCaps(res11)) {
+        const d = draw11(pos, last, banner.rolls, entry, collected, cells);
         const newKey = d && d.hits ? maskKey(d.collected) : mkey;
-        if (d && admit(gNext, newKey, gUnit, newUsage, res11)) {
-          push(gNext, d.collected, newKey, count + d.hits, gUnit, newUsage, res11, addStep(node, 2 * bIdx + 1));
+        if (d && admit(d.next, newKey, d.last, newUsage, res11)) {
+          push(d.next, d.collected, newKey, count + d.hits, d.last, newUsage, res11, addStep(node, 2 * bIdx + 1));
         }
       }
     } else if (withinCaps(res11)) {
@@ -678,10 +697,13 @@ function pullChain(pos, last, rolls, n) {
 }
 
 // The actions of a path given by its steps (stepsOf), replayed from
-// `startPos`: single pulls on normal banners spend the `rareTickets` first,
-// then cat food, and `isTarget(unit)` says which units are targets (the first
-// pull of each is a hit). Null if a step can't be pulled.
-export function replaySteps(banners, steps, { rareTickets = 0, isTarget = () => false, startPos = "1A" } = {}) {
+// `startPos` after the cat `last`: single pulls on normal banners spend the
+// `rareTickets` first, then cat food, and `isTarget(unit)` says which units
+// are targets (the first pull of each is a hit). Null if a step can't be
+// pulled.
+export function replaySteps(banners, steps, {
+  rareTickets = 0, isTarget = () => false, startPos = "1A", last: lastBefore = null,
+} = {}) {
   banners = coerceBanners(banners);
   const got = new Set();
   const hitsIn = (units) => {
@@ -696,7 +718,7 @@ export function replaySteps(banners, steps, { rareTickets = 0, isTarget = () => 
   };
   const actions = [];
   let pos = startPos;
-  let last = null;
+  let last = lastBefore;
   let ticketsUsed = 0;
   for (const step of steps) {
     const bIdx = step >> 1;
@@ -706,9 +728,9 @@ export function replaySteps(banners, steps, { rareTickets = 0, isTarget = () => 
     let act;
     if (step & 1) {
       if (banner.hasGuaranteed) {
-        const [gUnit, gNext, gSeed] = guaranteedFor(entry, last);
-        const d = gUnit && gNext ? pullChain(pos, last, banner.rolls, 10) : null;
-        if (!d) return null;
+        const d = pullChain(pos, last, banner.rolls, 10);
+        const [gUnit, gNext, gSeed] = d ? uberOf11(banner.rolls, d.next, entry, last) : [null, null, null];
+        if (!gUnit || !gNext) return null;
         const units = [...d.units, gUnit];
         act = action(bIdx, ACTION_GUARANTEED_11, PAY_CAT_FOOD, pos, gNext, units, hitsIn(units), COST_11, gSeed);
       } else {
@@ -744,13 +766,14 @@ export function replaySteps(banners, steps, { rareTickets = 0, isTarget = () => 
 
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-// Walk each action from 1A, recompute its unit(s) and next position, and check
-// they match what the solution claims. Returns [ok, errors].
-export function verifySolution(banners, solution) {
+// Walk each action from 1A (after the cat `last`), recompute its unit(s) and
+// next position, and check they match what the solution claims. Returns
+// [ok, errors].
+export function verifySolution(banners, solution, { last = null } = {}) {
   banners = coerceBanners(banners);
   const errors = [];
   let pos = "1A";
-  let lastUnit = null;
+  let lastUnit = last;
   const fail = (msg) => {
     errors.push(msg);
     return [false, errors];
@@ -763,8 +786,6 @@ export function verifySolution(banners, solution) {
     if (!(pos in banner.rolls)) return fail(`Step ${step}: position ${pos} not in banner ${act.banner_index}`);
 
     if (act.action_type === ACTION_GUARANTEED_11) {
-      const [gUnit, gNext] = guaranteedFor(banner.rolls[pos], lastUnit);
-      if (!gUnit || !gNext) return fail(`Step ${step}: no guaranteed roll at ${pos}`);
       const units = [];
       let p = pos;
       let l = lastUnit;
@@ -775,6 +796,8 @@ export function verifySolution(banners, solution) {
         p = np;
         l = u;
       }
+      const [gUnit, gNext] = uberOf11(banner.rolls, p, banner.rolls[pos], lastUnit);
+      if (!gUnit || !gNext) return fail(`Step ${step}: no guaranteed roll at ${pos}`);
       units.push(gUnit);
       if (!sameList(units, act.units_pulled)) return fail(`Step ${step}: 11-draw units mismatch at ${pos}: ${act.units_pulled} != ${units}`);
       if (gNext !== act.position_to) return fail(`Step ${step}: 11-draw next ${gNext} != ${act.position_to}`);
@@ -822,11 +845,11 @@ export const CELL_ALT_GUARANTEED = "alt_guaranteed"; // ...its dupe version
 // pull is one cell, a plain 11-roll eleven, a guaranteed 11-draw its ten
 // normal pulls plus the guaranteed column of the row it starts on (its dupe
 // line when the first pull was a dupe). Walks the path like `verifySolution`.
-export function solutionCells(banners, solution) {
+export function solutionCells(banners, solution, { last = null } = {}) {
   banners = coerceBanners(banners);
   const out = [];
   let pos = "1A";
-  let lastUnit = null;
+  let lastUnit = last;
   for (const act of solution.actions) {
     const rolls = banners[act.banner_index].rolls;
     const cells = [];
@@ -836,14 +859,12 @@ export function solutionCells(banners, solution) {
       return [unit, nextP];
     };
     if (act.action_type === ACTION_GUARANTEED_11) {
-      const entry = rolls[pos] || {};
-      const [gUnit, gNext] = guaranteedFor(entry, lastUnit);
-      // Same rule as guaranteedFor: a dupe first pull takes the RG cell.
-      const dupeFirst = Boolean(lastUnit) && entry.unit === lastUnit && "alt_unit" in entry;
       let p = pos;
-      let last = lastUnit;
-      for (let k = 0; k < 10; k++) [last, p] = pull(p, last);
-      cells.push({ pos, result: dupeFirst ? CELL_ALT_GUARANTEED : CELL_GUARANTEED });
+      let prev = lastUnit;
+      for (let k = 0; k < 10; k++) [prev, p] = pull(p, prev);
+      const [gUnit, gNext] = uberOf11(rolls, p, rolls[pos] || {}, lastUnit);
+      // A dupe first pull takes the dupe line's uber (godfat's RG cell).
+      cells.push({ pos, result: cells[0]?.result === CELL_ALT ? CELL_ALT_GUARANTEED : CELL_GUARANTEED });
       pos = gNext;
       lastUnit = gUnit;
     } else {
@@ -853,4 +874,40 @@ export function solutionCells(banners, solution) {
     out.push(cells);
   }
   return out;
+}
+
+// --------------------------------------------------------------------------- //
+// Dupes along a path (track switches), for the page
+// --------------------------------------------------------------------------- //
+
+// Each pull of a path that gives a Rare equal to the cat pulled just before,
+// so it's rerolled and you jump (usually to the other track): [{action, pull,
+// pos, was, got, next}], `action` and `pull` (within it) counting from 0 and
+// 1. Walks the path like `verifySolution`, after the cat `last`.
+export function solutionDupes(banners, solution, { last = null } = {}) {
+  banners = coerceBanners(banners);
+  const out = [];
+  let pos = "1A";
+  let lastUnit = last;
+  solution.actions.forEach((act, k) => {
+    const rolls = banners[act.banner_index].rolls;
+    const pulls = act.action_type === ACTION_GUARANTEED_11 ? 10 : is11(act) ? 11 : 1;
+    for (let j = 1; j <= pulls; j++) {
+      const [unit, next, note] = getNextPosNormal(pos, null, rolls, lastUnit);
+      if (note === "Duplicate") out.push({ action: k, pull: j, pos, was: lastUnit, got: unit, next });
+      [pos, lastUnit] = [next, unit];
+    }
+    if (act.action_type === ACTION_GUARANTEED_11) [pos, lastUnit] = [act.position_to, act.units_pulled.at(-1)];
+  });
+  return out;
+}
+
+// The banners on which the next pull after a path dupes its last cat:
+// [{banner_index, got, next}].
+export function nextDupes(banners, solution) {
+  const last = solution.actions.at(-1).units_pulled.at(-1);
+  return coerceBanners(banners).flatMap((b, i) => {
+    const [unit, next, note] = getNextPosNormal(solution.final_position, null, b.rolls, last);
+    return note === "Duplicate" ? [{ banner_index: i, got: unit, next }] : [];
+  });
 }
