@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "./api.js";
 import { canSave, compareStates, hasData, loadSaved, save, savingOff, setSavingOff } from "./browserSave.js";
 import { buildHash, decodeOwned, encodeOwned, readRawState, writeHash } from "./owncode.js";
-import { decodePlan, encodePlan } from "./plancode.js";
+import { decodePlans, encodePlan, encodePlans } from "./plancode.js";
 import { decodeList, decodeWishes, emptyWishes, encodeList, encodeWishes, importList } from "./wishlists.js";
 import TopBar from "./components/TopBar.jsx";
 import CatGuide from "./components/CatGuide.jsx";
@@ -61,7 +61,7 @@ export default function App() {
   const [lastCat, setLastCat] = useState(raw0.lastCat ?? null);
   const [ownedCode, setOwnedCode] = useState(raw0.ownedCode);
   const [wishes, setWishes] = useState(emptyWishes);
-  const [plan, setPlan] = useState(null);
+  const [plans, setPlans] = useState([]);
   const [notice, setNotice] = useState(null);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(() => canSave() && !savingOff());
@@ -70,7 +70,7 @@ export default function App() {
   const [conflict, setConflict] = useState(null);
 
   const wishCode = useMemo(() => encodeWishes(wishes), [wishes]);
-  const planCode = useMemo(() => (plan ? encodePlan(plan) : ""), [plan]);
+  const planCode = useMemo(() => encodePlans(plans), [plans]);
 
   useEffect(() => {
     api.master().then(setMaster).catch((e) => setError(e.message));
@@ -122,7 +122,7 @@ export default function App() {
       }
       setOwnedState(set);
       setWishes(w);
-      setPlan(decodePlan(state.planCode));
+      setPlans(decodePlans(state.planCode));
       setConflict(differs);
       setReady(true);
     })();
@@ -158,7 +158,7 @@ export default function App() {
     setOwnedCode(conflict.saved.ownedCode);
     setOwnedState(new Set(conflict.savedOwned));
     setWishes(decodeWishes(conflict.saved.wishCode, maps.uids));
-    setPlan(decodePlan(conflict.saved.planCode));
+    setPlans(decodePlans(conflict.saved.planCode));
     setConflict(null);
   }, [conflict, maps]);
 
@@ -191,12 +191,14 @@ export default function App() {
     [maps, replaceOwned]
   );
 
-  // Links to share: a plan opens read-only (everything here, with v=1); a
-  // wishlist adds a copy of it to whoever opens it.
+  // Links to share: a plan opens read-only (with your collection and
+  // wishlists, and just that plan; v=1); a wishlist adds a copy of it to
+  // whoever opens it.
   const links = useMemo(() => ({
-    plan: () => pageUrl() + buildHash({ ownedCode, seed, resources, lastCat, tab: "paths", wishCode, planCode, view: true }),
+    plan: (plan) => pageUrl() +
+      buildHash({ ownedCode, seed, resources, lastCat, tab: "paths", wishCode, planCode: encodePlan(plan), view: true }),
     wishlist: (list) => `${pageUrl()}#wish=${encodeList(list)}`,
-  }), [ownedCode, seed, resources, lastCat, wishCode, planCode]);
+  }), [ownedCode, seed, resources, lastCat, wishCode]);
 
   // From a shared plan: add its open wishlist to yours, or go to your data.
   const addSharedList = useCallback(() => reloadWith(`#wish=${encodeList(wishes.lists[wishes.open])}`), [wishes]);
@@ -225,7 +227,7 @@ export default function App() {
         <div className="view-banner">
           <div>
             <b>👀 You're looking at someone's shared plan.</b> Nothing here is saved in this browser, and your
-            own collection, wishlists and plan stay as they are.
+            own collection, wishlists and plans stay as they are.
           </div>
           <div className="save-actions">
             <button className="primary" onClick={addSharedList} disabled={!ready || !wishes.lists[wishes.open]?.units.length}>
@@ -305,8 +307,8 @@ export default function App() {
             replaceOwned={replaceOwned}
             wishes={wishes}
             setWishes={setWishes}
-            plan={plan}
-            setPlan={setPlan}
+            plans={plans}
+            setPlans={setPlans}
             planLink={links.plan}
             view={view}
             setError={setError}
@@ -319,13 +321,13 @@ export default function App() {
   );
 }
 
-const describe = ({ owned, seed, resources: r, lastCat, wishes, plan }, nameOf) =>
+const describe = ({ owned, seed, resources: r, lastCat, wishes, plans }, nameOf) =>
   `${owned.size} units owned · seed ${seed || "none"}${lastCat != null ? ` (after ${nameOf(lastCat)})` : ""} · ` +
   `${r.rare_tickets} rare tickets, ` +
   `${r.cat_food} cat food, ${r.platinum_tickets} platinum, ${r.legend_tickets} legend · ` +
   `${wishes.lists.length} wishlist${wishes.lists.length === 1 ? "" : "s"} ` +
   `(${wishes.lists.reduce((n, l) => n + l.units.length, 0)} units)` +
-  (plan ? ` · a plan saved ${plan.savedOn}` : "");
+  (plans.length ? ` · ${plans.length} plan${plans.length === 1 ? "" : "s"}` : "");
 
 // Shown when the page was opened with a link whose data isn't what this
 // browser saved, so an old bookmark or someone else's link can't silently
@@ -333,7 +335,7 @@ const describe = ({ owned, seed, resources: r, lastCat, wishes, plan }, nameOf) 
 function SavedConflict({ conflict, link, uids, units, onKeepLink, onUseSaved }) {
   const { saved, savedOwned } = conflict;
   const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : null;
-  const full = (s) => ({ ...s, wishes: decodeWishes(s.wishCode, uids), plan: decodePlan(s.planCode) });
+  const full = (s) => ({ ...s, wishes: decodeWishes(s.wishCode, uids), plans: decodePlans(s.planCode) });
   const nameOf = (uid) => units?.find((u) => u.uid === uid)?.name ?? `#${uid}`;
   return (
     <div className="saved-conflict">

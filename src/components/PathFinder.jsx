@@ -3,6 +3,7 @@ import { SEARCH_TIME_LIMIT_MS, api } from "../api.js";
 import { loadPref, savePref } from "../browserSave.js";
 import { localToday } from "../engine/data.js";
 import { explainPath } from "../explain.js";
+import { MAX_PLANS, MAX_PLAN_NAME, encodePlan, nextPlanName } from "../plancode.js";
 import { stepsOf } from "../engine/pathfinder.js";
 import { MAX_COUNT, autoDepth, planOf } from "../engine/services.js";
 import * as wl from "../wishlists.js";
@@ -36,13 +37,16 @@ function CostLine({ cost }) {
   return <span>{parts.length ? parts.join("  +  ") : "free"}</span>;
 }
 
-// Which search a path came from, and its pulls: to tell whether it's the
-// saved plan.
+// Which search a path came from, and its pulls: to tell whether it's one of
+// your plans.
 const pathSig = (seed, events, steps) => `${seed}|${events.join(",")}|${steps.join(",")}`;
+const sigOf = (plan) => pathSig(plan.seed, plan.events, plan.steps);
+// A plan's code without its name: what it's built again from.
+const planKey = (plan) => encodePlan({ ...plan, name: "" });
 
 export default function PathFinder({
-  master, owned, seed, setSeed, resources, setResources, lastCat, setLastCat, replaceOwned, wishes, setWishes, plan,
-  setPlan, planLink, view, setError, onEditWishlist,
+  master, owned, seed, setSeed, resources, setResources, lastCat, setLastCat, replaceOwned, wishes, setWishes, plans,
+  setPlans, planLink, view, setError, onEditWishlist,
 }) {
   const [events, setEvents] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
@@ -61,9 +65,12 @@ export default function PathFinder({
   const [offer, setOffer] = useState(null);
   const [lastSig, setLastSig] = useState(null);
   const [progress, setProgress] = useState(null);
-  // The saved plan, built again for showing (null while it's built).
-  const [planView, setPlanView] = useState(null);
-  const [planOpen, setPlanOpen] = useState(true);
+  // Your plans, each built again for showing (by planKey; missing while it's
+  // built), and the one open: its key, null for none, or undefined at first,
+  // for the newest one that's still current.
+  const [planViews, setPlanViews] = useState(() => new Map());
+  const building = useRef(new Set());
+  const [openPlan, setOpenPlan] = useState(undefined);
   // "Explain the path": a reason under each step. Remembered in this browser
   // (not from a shared plan, which saves nothing).
   const [explain, setExplain] = useState(() => loadPref("explain") === "1");
@@ -89,31 +96,42 @@ export default function PathFinder({
   );
   const upToDate = result && lastSig === searchSig;
 
-  const planSig = plan ? pathSig(plan.seed, plan.events, plan.steps) : null;
   useEffect(() => {
-    setPlanView(null);
-    if (!plan) return undefined;
-    let cancelled = false;
-    api.plan(plan)
-      .then((v) => !cancelled && setPlanView(v))
-      .catch((e) => !cancelled && setError(e.message));
-    return () => {
-      cancelled = true;
-    };
-  }, [plan, setError]);
+    for (const plan of plans) {
+      const key = planKey(plan);
+      if (planViews.has(key) || building.current.has(key)) continue;
+      building.current.add(key);
+      api.plan(plan)
+        .then((v) => setPlanViews((m) => new Map(m).set(key, v)))
+        .catch((e) => setError(e.message))
+        .finally(() => building.current.delete(key));
+    }
+  }, [plans, planViews, setError]);
+
+  // A plan is outdated once your seed isn't the one it starts from (you've
+  // pulled since, or changed it): it's kept, but can't be followed.
+  const outdated = (plan) => Boolean(seed) && plan.seed !== seed;
+  const shownPlans = [...plans.filter((p) => !outdated(p)), ...plans.filter(outdated)];
+  const current = plans.filter((p) => !outdated(p));
+  const openKey = openPlan === undefined ? (current.length ? planKey(current.at(-1)) : null) : openPlan;
+  const savedNames = useMemo(() => new Map(plans.map((p) => [sigOf(p), p.name])), [plans]);
 
   // A path's wishlist places (#1…) by godfat name: a search result says them;
-  // for the saved plan, they're looked up in the open wishlist.
+  // for a plan, they're looked up in the open wishlist.
   const planRanks = useMemo(() => {
-    if (!planView?.target_uids) return null;
     const open = wishes.lists[wishes.open];
-    const ranks = {};
-    for (const [name, uid] of Object.entries(planView.target_uids)) {
-      const i = open.units.findIndex((u) => u.uid === uid);
-      if (i >= 0) ranks[name] = i + 1;
+    const out = new Map();
+    for (const [key, v] of planViews) {
+      if (!v?.target_uids) continue;
+      const ranks = {};
+      for (const [name, uid] of Object.entries(v.target_uids)) {
+        const i = open.units.findIndex((u) => u.uid === uid);
+        if (i >= 0) ranks[name] = i + 1;
+      }
+      out.set(key, ranks);
     }
-    return ranks;
-  }, [planView, wishes]);
+    return out;
+  }, [planViews, wishes]);
 
   const fetchEvents = async () => {
     if (!seed) {
@@ -157,7 +175,7 @@ export default function PathFinder({
     setFollowMsg(null);
     setOffer(null);
     setProgress(null);
-    setPlanOpen(false);
+    setOpenPlan(null);
     const controller = new AbortController();
     searchAbort.current = controller;
     try {
@@ -185,17 +203,36 @@ export default function PathFinder({
   };
 
   const savePlan = (sol) => {
-    if (plan && !window.confirm("Replace your saved plan with this path?")) return;
-    setPlan({ ...planOf(result, sol), savedOn: localToday() });
-    setPlanOpen(false);
+    if (plans.length >= MAX_PLANS) {
+      setError(`You have ${MAX_PLANS} plans, as many as can be kept: remove one first.`);
+      return;
+    }
+    setPlans((ps) => [...ps, { ...planOf(result, sol), savedOn: localToday(), name: nextPlanName(ps) }]);
   };
 
-  const followPath = async (sol) => {
+  const renamePlan = (plan) => {
+    const name = window.prompt("Name of this plan:", plan.name);
+    if (name === null) return;
+    setPlans((ps) => ps.map((x) => (x === plan ? { ...x, name: name.trim().slice(0, MAX_PLAN_NAME) || x.name } : x)));
+  };
+  const removePlan = (plan) => {
+    if (window.confirm(`Remove “${plan.name}” from your plans?`)) setPlans((ps) => ps.filter((x) => x !== plan));
+  };
+  const removeOutdated = () => {
+    const n = plans.filter(outdated).length;
+    if (window.confirm(`Remove ${n} outdated plan${n === 1 ? "" : "s"}?`)) setPlans((ps) => ps.filter((x) => !outdated(x)));
+  };
+
+  // `sig`: the path's pathSig. If it's one of your plans, that plan is done.
+  const followPath = async (sol, sig) => {
+    const saved = plans.find((p) => sigOf(p) === sig);
+    const others = plans.filter((p) => p !== saved && !outdated(p)).length;
     if (
       !window.confirm(
         "Mark every unit pulled along this path as owned, decrement your resources, " +
           "and fill in your new seed? Do this only after you have actually pulled in-game." +
-          (plan ? " Your saved plan is cleared too (it starts from your old seed)." : "")
+          (saved ? ` “${saved.name}” is then taken off your plans.` : "") +
+          (others ? ` Your other plan${others === 1 ? "" : "s"} for this seed will show as outdated.` : "")
       )
     )
       return;
@@ -208,7 +245,7 @@ export default function PathFinder({
       setResult(null);
       setEvents(null);
       setSelected(new Set());
-      setPlan(null);
+      setPlans((ps) => ps.filter((p) => sigOf(p) !== sig));
       let msg = res.new_seed
         ? `New seed filled in automatically: ${res.new_seed} — verify on godfat, then search again.`
         : "Path recorded.";
@@ -271,22 +308,40 @@ export default function PathFinder({
         </div>
       )}
 
-      {plan && (
-        <PlanCard
-          plan={plan}
-          planView={planView}
-          ranks={planRanks}
-          seed={seed}
-          open={planOpen}
-          setOpen={setPlanOpen}
-          view={view}
-          planLink={planLink}
-          lastName={plan.last === null || plan.last === undefined ? null : byUid.get(plan.last)?.name ?? `#${plan.last}`}
-          onFollow={followPath}
-          onRemove={() => window.confirm("Remove your saved plan?") && setPlan(null)}
-          explain={explain}
-          onExplain={toggleExplain}
-        />
+      {plans.length > 0 && (
+        <div className="plans">
+          <h4 className="plans-head">
+            📌 {view ? "Their plan" : `Your plans (${plans.length} of ${MAX_PLANS})`}
+          </h4>
+          {shownPlans.map((plan, i) => {
+            const key = planKey(plan);
+            return (
+              <PlanCard
+                key={`${key}|${i}`}
+                plan={plan}
+                planView={planViews.get(key) ?? null}
+                ranks={planRanks.get(key) ?? null}
+                outdated={outdated(plan)}
+                seed={seed}
+                open={openKey === key}
+                onToggle={() => setOpenPlan(openKey === key ? null : key)}
+                view={view}
+                planLink={() => planLink(plan)}
+                lastName={plan.last === null || plan.last === undefined ? null : byUid.get(plan.last)?.name ?? `#${plan.last}`}
+                onFollow={(sol) => followPath(sol, sigOf(plan))}
+                onRename={() => renamePlan(plan)}
+                onRemove={() => removePlan(plan)}
+                explain={explain}
+                onExplain={toggleExplain}
+              />
+            );
+          })}
+          {!view && plans.some(outdated) && (
+            <div className="save-actions">
+              <button className="small" onClick={removeOutdated}>Remove the outdated plans</button>
+            </div>
+          )}
+        </div>
       )}
 
       {events && (
@@ -393,7 +448,7 @@ export default function PathFinder({
         {result && (
           <Results result={result} onFollow={followPath} onSave={savePlan} view={view}
             explain={explain} onExplain={toggleExplain}
-            savedSig={planSig} byUid={byUid} />
+            savedNames={savedNames} byUid={byUid} />
         )}
       </div>
     </div>
@@ -546,55 +601,66 @@ const PLAN_PROBLEM = {
   changed: "The banner data changed since you saved it, so these pulls may not give what they did: check them, or search again.",
 };
 
-// Your saved plan: kept in the page URL and this browser until you follow or
-// remove it, built again from its seed, banners and pulls (no search).
+// One of your plans: kept in the page URL and this browser until you follow
+// or remove it, built again from its seed, banners and pulls (no search).
+// Outdated (it starts from a seed you've pulled past): kept, not followable.
 function PlanCard({
-  plan, planView, ranks, seed, open, setOpen, view, planLink, lastName, onFollow, onRemove, explain, onExplain,
+  plan, planView, ranks, outdated, seed, open, onToggle, view, planLink, lastName, onFollow, onRename, onRemove,
+  explain, onExplain,
 }) {
   const sol = planView?.solutions?.[0] ?? null;
   const reasons = useMemo(() => (explain && sol ? explainPath(sol, { ranks, units: planView.units }) : null),
     [explain, sol, ranks, planView]);
   return (
-    <div className="solution selected plan-card">
-      <button className="sol-head sol-pick plan-toggle" onClick={() => setOpen(!open)}
+    <div className={`solution plan-card ${open ? "selected" : "collapsed"} ${outdated ? "outdated" : ""}`}>
+      <button className="sol-head sol-pick plan-toggle" onClick={onToggle}
         title={open ? "Hide its pulls and table" : "Show its pulls and table"}>
         <span className="sol-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
-        <span className="sol-rank">📌 {view ? "Their plan" : "Your plan"}</span>
+        <span className="sol-rank">📌 {plan.name}</span>
+        {outdated && <span className="tag outdated-tag">outdated</span>}
         {sol ? <PathTitle sol={sol} ranks={ranks} /> : <span className="muted">{planView ? "" : "Loading…"}</span>}
       </button>
-      <div className="muted small plan-meta">
-        Saved {plan.savedOn} · seed {plan.seed}{lastName ? ` after ${lastName}` : ""} ·{" "}
-        {plan.events.length} banner{plan.events.length === 1 ? "" : "s"},{" "}
-        {plan.depth} rows · {plan.steps.length} step{plan.steps.length === 1 ? "" : "s"}
-      </div>
-      {planView?.problem && <p className="warn small">⚠️ {PLAN_PROBLEM[planView.problem]}</p>}
-      {!view && seed && plan.seed !== seed && (
-        <p className="warn small">⚠️ This plan starts from seed {plan.seed}, but your seed is now {seed}.</p>
-      )}
-      {!view && (
-        <div className="save-actions">
-          <CopyButton text={planLink} label="Share plan (read-only)"
-            title="A link for a friend: it opens this plan (with your collection and wishlists) read-only, and saves nothing in their browser" />
-          <CopyButton text={() => window.location.href} label="Copy link for my other devices"
-            title="Your whole save (collection, wishlists, this plan, seed and resources): open it on another device to carry on there" />
-          {sol && (
-            <button className="primary" onClick={() => onFollow(sol)}>I followed this path</button>
-          )}
-          <button onClick={onRemove}>Remove plan</button>
-        </div>
-      )}
-      {open && sol && (
+      {open && (
         <>
-          <div className="save-actions"><ExplainButton explain={explain} onExplain={onExplain} /></div>
-          <PathSteps sol={sol} bannerName={nameOfBanner(planView)} units={planView.units} reasons={reasons} />
-          <TrackTable result={planView} path={sol} ranks={ranks} />
+          <div className="muted small plan-meta">
+            Saved {plan.savedOn} · seed {plan.seed}{lastName ? ` after ${lastName}` : ""} ·{" "}
+            {plan.events.length} banner{plan.events.length === 1 ? "" : "s"},{" "}
+            {plan.depth} rows · {plan.steps.length} step{plan.steps.length === 1 ? "" : "s"}
+          </div>
+          {planView?.problem && <p className="warn small">⚠️ {PLAN_PROBLEM[planView.problem]}</p>}
+          {outdated && (
+            <p className="warn small">
+              ⏳ Outdated: it starts from seed {plan.seed}, but your seed is now {seed} (you've pulled since, or changed
+              it), so it can't be followed any more.
+            </p>
+          )}
+          {!view && (
+            <div className="save-actions">
+              <CopyButton text={planLink} label="Share plan (read-only)"
+                title="A link for a friend: it opens just this plan (with your collection and wishlists) read-only, and saves nothing in their browser" />
+              <CopyButton text={() => window.location.href} label="Copy link for my other devices"
+                title="Your whole save (collection, wishlists, all your plans, seed and resources): open it on another device to carry on there" />
+              {sol && !outdated && (
+                <button className="primary" onClick={() => onFollow(sol)}>I followed this path</button>
+              )}
+              <button onClick={onRename}>Rename</button>
+              <button onClick={onRemove}>Remove</button>
+            </div>
+          )}
+          {sol && (
+            <>
+              <div className="save-actions"><ExplainButton explain={explain} onExplain={onExplain} /></div>
+              <PathSteps sol={sol} bannerName={nameOfBanner(planView)} units={planView.units} reasons={reasons} />
+              <TrackTable result={planView} path={sol} ranks={ranks} />
+            </>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function Results({ result, onFollow, onSave, view, savedSig, byUid, explain, onExplain }) {
+function Results({ result, onFollow, onSave, view, savedNames, byUid, explain, onExplain }) {
   // The selected path shows its steps and is drawn on the track table; the
   // others show only their title. A new search starts at the best one.
   const [picked, setPicked] = useState({ result: null, index: 0 });
@@ -665,13 +731,14 @@ function Results({ result, onFollow, onSave, view, savedSig, byUid, explain, onE
       )}
       {result.solutions.map((sol, i) => {
         const open = i === pathIndex;
-        const isPlan = savedSig === pathSig(result.seed, result.event_ids, stepsOf(sol));
+        const sig = pathSig(result.seed, result.event_ids, stepsOf(sol));
+        const planName = savedNames.get(sig);
         const title = (
           <>
             <span className="sol-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
             <span className="sol-rank">#{i + 1}</span>
             <PathTitle sol={sol} ranks={ranks} />
-            {isPlan && <span className="plan-tag">📌 your plan</span>}
+            {planName && <span className="plan-tag">📌 {planName}</span>}
           </>
         );
         if (!open)
@@ -688,14 +755,14 @@ function Results({ result, onFollow, onSave, view, savedSig, byUid, explain, onE
             <div className="sol-head">
               {title}
               <span className="on-table">shown on the table ↓</span>
-              {!view && !isPlan && (
+              {!view && !planName && (
                 <button className="small" onClick={() => onSave(sol)}
-                  title="Keep this path (in the page URL and this browser) until you follow it, and share it">
-                  📌 Save as my plan
+                  title="Keep this path in your plans (in the page URL and this browser) until you follow it, and share it">
+                  📌 Save as a plan
                 </button>
               )}
               {!view && (
-                <button className="primary small" onClick={() => onFollow(sol)}>
+                <button className="primary small" onClick={() => onFollow(sol, sig)}>
                   I followed this path
                 </button>
               )}

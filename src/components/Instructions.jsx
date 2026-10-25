@@ -104,7 +104,7 @@ export default function Instructions({ disclaimer }) {
           units with their place: #1…) and its resource cost. The selected path (the best one at
           first) also lists its exact pulls, ending at the last target; <b>click another path's
           title</b> to see its pulls instead.</li>
-        <li><b>💬 Explain the path</b> (a button on the selected path and on your plan) adds a short
+        <li><b>💬 Explain the path</b> (a button on the selected path and on your plans) adds a short
           reason under each step: 🎯 the targets it gets, ✨ the Legend Rares it pulls, 🔀 where its
           track switches lead, ↪ the switch it sets up for the next step, or ⬇ where it moves you and
           toward which target (one line for a run of such steps). They say what each step does, all of
@@ -121,17 +121,22 @@ export default function Instructions({ disclaimer }) {
           targets are in bold (with their wishlist place), its track switches are outlined (🔀, also
           where godfat's table shows no dupe line, after another banner's cat), and the striped
           position is where you'll be after the path.</li>
-        <li><b>📌 Save as my plan</b> keeps a path at the top of the Path Finder, with its pulls and
-          table, until you follow or remove it: it's in the page URL and this browser, so it's there
-          when you come back, without searching again. <b>Copy link for my other devices</b> carries
-          everything (collection, wishlists, plan, seed, resources) to another device of yours.
-          <b> Share plan (read-only)</b> copies a link for a friend: it opens your plan (with your
-          collection and wishlists) read-only, saves nothing in their browser and leaves their own data
-          alone. From there, <b>Add their wishlist to mine</b> copies the wishlist into their lists.</li>
+        <li><b>📌 Save as a plan</b> keeps a path in <b>your plans</b>, at the top of the Path Finder (up
+          to 10, named “Plan 1”, “Plan 2”…; <b>Rename</b> them as you like), each with its pulls and table,
+          until you follow or remove it: they're in the page URL and this browser, so they're there when
+          you come back, without searching again. One is open at a time; click another's title to see it.
+          A plan that starts from a seed you've pulled past (or changed) shows as <b>outdated</b>: kept to
+          look back at, but it can't be followed; <b>Remove the outdated plans</b> clears them.
+          <b> Copy link for my other devices</b> carries everything (collection, wishlists, all your plans,
+          seed, resources) to another device of yours. <b>Share plan (read-only)</b> copies a link for a
+          friend with just that plan: it opens it (with your collection and wishlists) read-only, saves
+          nothing in their browser and leaves their own data alone. From there, <b>Add their wishlist to
+          mine</b> copies the wishlist into their lists.</li>
         <li>Pull that path in-game, then click <b>“I followed this path.”</b> Every
           unit pulled is marked owned, your resources are decremented, your{" "}
           <b>new seed is filled in automatically</b> (worked out the same way godfat does — just
-          verify it) and your saved plan is cleared. If it pulled units on your wishlists, you're
+          verify it). If the path was one of your plans, it's taken off them; your other plans for that
+          seed then show as outdated. If it pulled units on your wishlists, you're
           asked whether to take them off (keep them if you want more copies). Then search
           again.</li>
       </ol>

@@ -1,13 +1,37 @@
 # Decisions & Assumptions
 
 Running log of non-obvious decisions, assumptions, and findings made while
-building the Battle Cats Gacha Explorer: the latest changes (explaining a
-path, dupes after any cat, never skipping a Legend Rare, wishlists, deeper
-tables, the repo clean-up) first, then the webapp's sections in the order they
-happened, then the early
+building the Battle Cats Gacha Explorer: the latest changes (several plans,
+explaining a path, dupes after any cat, never skipping a Legend Rare,
+wishlists, deeper tables, the repo clean-up) first, then the webapp's sections
+in the order they happened, then the early
 milestones (M1–M6). The app used to have a Python server
 (`backend/`): anything below about it, its files or its tests describes how it
 worked then; it was removed in the repo clean-up, and it's all in git history.
+
+## Several plans
+
+The user asked to save more than one plan, and to keep the plans for a seed
+they've pulled past, marked outdated, rather than drop them.
+
+- **Up to 10 plans**, each with a name (from "Plan 1" on, renamable), in the
+  page URL and the browser's copy as before: `p=` holds their codes joined by
+  "." (base64url never uses it), and a plan code now ends with its name
+  (format 3; older codes still read, getting "Plan N"). Each plan adds about
+  150–350 characters to your own link.
+- **Outdated** means a plan starts from a seed that isn't your current one:
+  you followed a path since, or changed the seed. That's worked out, not
+  stored, so going back to that seed makes it current again. Outdated plans
+  are kept and shown (greyed, after the current ones), can't be followed, and
+  can be removed together.
+- **Following** a path takes it off your plans if it's one of them (matched by
+  seed, banners and steps, so following the same path from the search results
+  counts too); the confirmation says so, and that your other plans for that
+  seed will show as outdated.
+- **Sharing a plan** sends only that plan (with your collection and
+  wishlists); "Copy link for my other devices" carries them all.
+- One plan is open at a time (its steps and track table), the newest current
+  one at first; a search closes it, as before.
 
 ## Explaining a path
 

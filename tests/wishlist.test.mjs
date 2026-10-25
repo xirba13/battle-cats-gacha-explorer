@@ -14,7 +14,8 @@ import { LEGEND } from "../src/engine/rolls.js";
 import {
   MasterData, eventsRequest, followedRequest, legendRareSpots, planOf, planRequest, searchRequest,
 } from "../src/engine/services.js";
-import { decodePlan, encodePlan } from "../src/plancode.js";
+import { base64urlToBytes, bytesToBase64url } from "../src/bytes.js";
+import { MAX_PLANS, decodePlan, decodePlans, encodePlan, encodePlans, nextPlanName } from "../src/plancode.js";
 import * as wl from "../src/wishlists.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -151,6 +152,30 @@ test("a broken plan code is no plan", () => {
   assert.equal(decodePlan(code.slice(0, 20)), null);
   // A step on a banner the plan doesn't have.
   assert.equal(decodePlan(encodePlan({ ...planOf(r, r.solutions[0]), steps: [2 * EVENTS.length], savedOn: "2026-10-24" })), null);
+});
+
+test("several plans, with their names, in one code", () => {
+  const r = search(wishOf(WISHED), { max_solutions: 3 });
+  const plans = r.solutions.map((sol, i) => ({ ...planOf(r, sol), savedOn: "2026-10-25", name: i ? `Plan ${i + 1}` : "Ubers first" }));
+  const back = decodePlans(encodePlans(plans));
+  assert.deepEqual(back.map((p) => p.name), plans.map((p) => p.name));
+  assert.deepEqual(back.map((p) => p.steps), plans.map((p) => p.steps));
+  assert.deepEqual(decodePlans(""), []);
+  // A broken one is left out; there are at most MAX_PLANS.
+  assert.equal(decodePlans(`${encodePlans(plans)}.nope`).length, plans.length);
+  assert.equal(decodePlans(encodePlans(Array(MAX_PLANS + 2).fill(plans[0]))).length, MAX_PLANS);
+  assert.equal(nextPlanName(plans), `Plan ${plans.length + 1}`);
+  assert.equal(nextPlanName([]), "Plan 1");
+});
+
+test("a plan saved before plans had names gets one", () => {
+  // The same plan in format 2: no name at its end.
+  const r = search(wishOf(WISHED), { max_solutions: 1 });
+  const bytes = base64urlToBytes(encodePlan({ ...planOf(r, r.solutions[0]), savedOn: "2026-10-25", name: "" }));
+  bytes[0] = 2;
+  const old = bytesToBase64url(bytes.subarray(0, bytes.length - 1));
+  assert.equal(decodePlan(old).name, null);
+  assert.deepEqual(decodePlans(old).map((p) => p.name), ["Plan 1"]);
 });
 
 // --- Never skipping a Legend Rare ---------------------------------------------------

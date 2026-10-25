@@ -29,8 +29,9 @@ It has four tabs:
    godfat-style **track table**, marks every **track switch** a path goes through
    (a dupe: the same Rare as the cat before, on any banner, rerolled), can
    **explain a path** (a short reason under each step), lets you
-   **save a path as your plan** (kept until
-   you follow it, and shareable as a read-only link), and offers an **"I followed
+   **save paths as plans** (up to 10, named, kept until you follow them, each
+   shareable as a read-only link; the ones from a seed you've pulled past stay,
+   marked outdated), and offers an **"I followed
    this path"** button that marks every newly pulled unit as owned, decrements
    your resources, and **auto-fills your new seed**.
 4. **Instructions** — an in-app usage guide.
@@ -58,7 +59,7 @@ It has four tabs:
 ## Your data & privacy
 
 There are no accounts and no server: the page loads static files and computes
-everything on your device. Your **owned units, wishlists, saved plan, seed, and
+everything on your device. Your **owned units, wishlists, saved plans, seed, and
 resources** are encoded into the page URL (e.g. `…/#o=<code>&s=<seed>&r=…&w=…&p=…`)
 and saved in your browser (localStorage), so:
 
@@ -69,7 +70,7 @@ and saved in your browser (localStorage), so:
   and **Load a code…** restores it.
 - Opening a link whose data isn't what your browser saved asks which one to keep,
   so an old bookmark or someone else's link can't replace your saved collection.
-- **Share plan (read-only)** gives a link for a friend that opens your plan
+- **Share plan (read-only)** gives a link for a friend that opens that plan
   read-only: nothing is saved in their browser and their own data is left alone
   (your own link, **Copy link for my other devices**, is the one that carries
   everything to another device of yours). A **wishlist link or code** adds an
@@ -101,8 +102,8 @@ and saved in your browser (localStorage), so:
    change a banner/wishlist. Under the paths, the **track table** shows each searched
    banner's roll table (tracks A and B, plus an 11-draw column on guaranteed
    banners) with the selected path shaded.
-5. Pick a path (**📌 Save as my plan** keeps it, with its table, until you're
-   done), pull it in-game, then click **"I followed this path."** Every unit on
+5. Pick a path (**📌 Save as a plan** keeps it in your plans, with its table,
+   until you're done), pull it in-game, then click **"I followed this path."** Every unit on
    that path is marked owned, your resources are decremented, your **new seed is
    filled in automatically** — verify it on godfat — and you're asked whether to
    take the wishlist units you got off your wishlists. Then search again.
@@ -203,7 +204,7 @@ src/
                     # search.worker.js (runs a search in the background)
   api.js            # the page's requests (banners, search, plans, "I followed this path"), answered here
   owncode.js        # owned/seed/resources <-> URL code (the "save file")
-  wishlists.js      # the wishlists and their codes; plancode.js: a saved plan's code; bytes.js: helpers
+  wishlists.js      # the wishlists and their codes; plancode.js: saved plans' codes; bytes.js: helpers
   browserSave.js    # the same state saved in this browser (localStorage)
   components/       # Cat Guide, Wishlist, Path Finder, track table, instructions
 public/
