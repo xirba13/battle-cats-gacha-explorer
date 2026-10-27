@@ -1,5 +1,5 @@
 {
-"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-10-26","events_from":"2026-10-19"},
+"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-10-27","events_from":"2026-10-20"},
 "cats":{
 "31":["Bodhisattva Cat",3],
 "32":["Delinquent Cat",3],
