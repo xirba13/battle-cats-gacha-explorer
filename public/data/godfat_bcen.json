@@ -1,5 +1,5 @@
 {
-"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-11-16","events_from":"2026-11-09"},
+"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-11-17","events_from":"2026-11-10"},
 "cats":{
 "31":["Bodhisattva Cat",3],
 "32":["Delinquent Cat",3],
@@ -251,9 +251,6 @@
 "events":{
 "2026-10-16_1071":{"start_on":"2026-10-16","end_on":"2030-01-01","name":"Get an Uber Rare Cat!! 100% Uber drop Rate in the PLATINUM CAPSULES!","id":1071,"rare":0,"supa":0,"uber":10000,"platinum":"platinum"},
 "2026-10-16_1072":{"start_on":"2026-10-16","end_on":"2030-01-01","name":"Get a Guaranteed Uber or Legend Rare from the Legend Capsules!","id":1072,"rare":0,"supa":0,"uber":9500,"legend":500,"platinum":"legend"},
-"2026-11-02_1079":{"start_on":"2026-11-02","end_on":"2026-11-09","name":"Pick up mighty teammates to fight by your side in a River City Clash!","id":1079,"rare":7000,"supa":2500,"uber":500},
-"2026-11-02_1080":{"start_on":"2026-11-02","end_on":"2026-11-09","name":"River City Clash Capsules, featuring Ryuichi! ★Tap banner for details!","id":1080,"rare":7000,"supa":2500,"uber":500},
-"2026-11-02_926":{"start_on":"2026-11-02","end_on":"2026-11-09","name":"Limited Halloween Units! Get spooky special editions of Uber Cats!","id":926,"rare":7000,"supa":2500,"uber":500},
 "2026-11-09_1079":{"start_on":"2026-11-09","end_on":"2026-11-16","name":"Pick up mighty teammates to fight by your side in a River City Clash!","id":1079,"rare":7000,"supa":2500,"uber":500,"guaranteed":true},
 "2026-11-09_1080":{"start_on":"2026-11-09","end_on":"2026-11-16","name":"River City Clash Capsules, featuring Ryuichi! ★Tap banner for details!","id":1080,"rare":7000,"supa":2500,"uber":500,"guaranteed":true},
 "2026-11-09_926":{"start_on":"2026-11-09","end_on":"2026-11-16","name":"Limited Halloween Units! Get spooky special editions of Uber Cats!","id":926,"rare":7000,"supa":2500,"uber":500,"guaranteed":true},
