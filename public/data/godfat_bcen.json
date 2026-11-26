@@ -1,5 +1,5 @@
 {
-"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-11-25","events_from":"2026-11-18"},
+"_meta":{"source":"https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-en.yaml","license":"battle-cats-rolls is Apache-2.0 (Lin Jen-Shin); game data (c) PONOS","built_on":"2026-11-26","events_from":"2026-11-19"},
 "cats":{
 "31":["Bodhisattva Cat",3],
 "32":["Delinquent Cat",3],
@@ -267,8 +267,6 @@
 "2026-10-16_1071":{"start_on":"2026-10-16","end_on":"2026-11-27","name":"Get an Uber Rare Cat!! 100% Uber drop Rate in the PLATINUM CAPSULES!","id":1071,"rare":0,"supa":0,"uber":10000,"platinum":"platinum"},
 "2026-10-16_1072":{"start_on":"2026-10-16","end_on":"2026-11-27","name":"Get a Guaranteed Uber or Legend Rare from the Legend Capsules!","id":1072,"rare":0,"supa":0,"uber":9500,"legend":500,"platinum":"legend"},
 "2026-11-16_861":{"start_on":"2026-11-16","end_on":"2026-11-20","name":"A legion of top-class lady Cats led by Princess Cat! 2x Legend Rare drop chance!","id":861,"rare":6940,"supa":2500,"uber":500,"legend":60},
-"2026-11-16_979":{"start_on":"2026-11-16","end_on":"2026-11-18","name":"Mighty Morta-Loncha added! Ultimate anti-Zombie firepower!","id":979,"rare":6970,"supa":2500,"uber":500,"legend":30},
-"2026-11-16_986":{"start_on":"2026-11-16","end_on":"2026-11-18","name":"Mamoluga added! Unstoppable Eldritch Cats(?)!","id":986,"rare":6970,"supa":2500,"uber":500,"legend":30},
 "2026-11-18_1021":{"start_on":"2026-11-18","end_on":"2026-11-20","name":"Raclesa added! Cosmic cuties, here to crush your enemies!","id":1021,"rare":6970,"supa":2500,"uber":500,"legend":30},
 "2026-11-18_1043":{"start_on":"2026-11-18","end_on":"2026-11-20","name":"Fuma Kotaro added! Masters of battle join the Cat cause!","id":1043,"rare":6970,"supa":2500,"uber":500,"legend":30},
 "2026-11-20_1004":{"start_on":"2026-11-20","end_on":"2026-11-23","name":"Conjurer hero Komori joins the fight! ★Tap for details!","id":1004,"rare":6970,"supa":2500,"uber":500,"legend":30},
